@@ -10,7 +10,6 @@ import {
   getCampaignPaymentSuccessController,
 } from "./campaign.controller";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { uploadEventMedia } from "../../uploads/events/middleware/uploadEventMedia";
 
 const router = Router(); 
 
@@ -79,12 +78,6 @@ router.post(
  * - upload_type = campaign_promo
  * - file field name: promoMedia
  */
-router.post(
-  "/promo-media/upload",
-  requireAuth,
-  uploadEventMedia.single("promoMedia"),
-  uploadCampaignPromoMediaController
-);
 
 /**
  * Load promo media moderation/render status for a campaign placement.
