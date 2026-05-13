@@ -1,0 +1,398 @@
+import { Response } from "express";
+import { db } from "../../config/db";
+import { AuthenticatedRequest } from "../../middleware/auth.middleware";
+
+function getString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function getBoolean(value: unknown): boolean {
+  return value === true || value === "true" || value === "1";
+}
+
+export async function getMyEvents(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const result = await db.query(
+      `
+      SELECT
+        es.id,
+        es.event_code,
+        es.title,
+        es.description,
+        es.event_type,
+        es.submitter_email,
+        es.status,
+        es.payment_status,
+        es.payment_amount_cents,
+        es.payment_currency,
+        es.featured,
+        es.created_at,
+        es.updated_at,
+        loc.city,
+        loc.state_region,
+        loc.country,
+        sch.start_date,
+        EXISTS (
+          SELECT 1
+          FROM event_promotions ep
+          WHERE ep.event_id = es.id
+            AND ep.placement_type = 'major_event'
+            AND ep.status = 'active'
+            AND ep.expires_at > NOW()
+        ) AS is_major_event,
+        (
+          SELECT ep.expires_at
+          FROM event_promotions ep
+          WHERE ep.event_id = es.id
+            AND ep.placement_type = 'major_event'
+            AND ep.status = 'active'
+            AND ep.expires_at > NOW()
+          ORDER BY ep.expires_at DESC
+          LIMIT 1
+        ) AS major_event_expires_at
+      FROM event_submissions es
+      LEFT JOIN event_locations loc
+        ON loc.event_id = es.id
+      LEFT JOIN event_schedules sch
+        ON sch.event_id = es.id
+      WHERE es.owner_user_id = $1
+      ORDER BY es.created_at DESC
+      LIMIT 50
+      `,
+      [req.user.id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("getMyEvents error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load your events",
+    });
+  }
+}
+export async function getMyEventMetadataForEdit(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const eventId = String(req.params.eventId || "");
+
+    if (!req.user?.id) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const result = await db.query(
+      `
+      SELECT
+        es.id,
+        es.event_code,
+        es.title,
+        es.description,
+        es.event_type,
+        es.status,
+        es.owner_user_id,
+
+        sch.start_date,
+        sch.end_date,
+        sch.start_time,
+        sch.end_time,
+        sch.timezone,
+
+        loc.venue_name,
+        loc.address_line_1,
+        loc.city,
+        loc.state_region,
+        loc.country,
+        loc.country_code,
+        loc.is_virtual,
+
+        sp.sponsor_name,
+        sp.contact_email
+      FROM event_submissions es
+      LEFT JOIN event_schedules sch ON sch.event_id = es.id
+      LEFT JOIN event_locations loc ON loc.event_id = es.id
+      LEFT JOIN event_sponsors sp ON sp.event_id = es.id
+      WHERE es.id = $1
+        AND es.owner_user_id = $2
+      LIMIT 1
+      `,
+      [eventId, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found or you do not own this event.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      event: result.rows[0],
+    });
+  } catch (error) {
+    console.error("getMyEventMetadataForEdit error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load event metadata",
+    });
+  }
+}
+
+export async function updateMyEventMetadata(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const client = await db.connect();
+
+  try {
+    const eventId = String(req.params.eventId || "");
+
+    if (!req.user?.id) {
+      client.release();
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const {
+      title,
+      description,
+      event_type,
+      start_date,
+      end_date,
+      start_time,
+      end_time,
+      timezone,
+      venue_name,
+      address_line_1,
+      city,
+      state_region,
+      country,
+      country_code,
+      is_virtual,
+      sponsor_name,
+      contact_email,
+    } = req.body ?? {};
+
+    const safeTitle = getString(title);
+    const safeDescription = getString(description);
+    const safeEventType = getString(event_type);
+    const safeStartDate = getString(start_date);
+    const safeEndDate = getString(end_date);
+    const safeStartTime = getString(start_time);
+    const safeEndTime = getString(end_time);
+    const safeTimezone = getString(timezone);
+    const safeVenueName = getString(venue_name);
+    const safeAddressLine1 = getString(address_line_1);
+    const safeCity = getString(city);
+    const safeStateRegion = getString(state_region);
+    const safeCountry = getString(country);
+    const safeCountryCode = getString(country_code);
+    const safeSponsorName = getString(sponsor_name);
+    const safeContactEmail = getString(contact_email);
+    const safeIsVirtual = getBoolean(is_virtual);
+
+    if (!safeTitle || !safeDescription || !safeEventType) {
+      client.release();
+      return res.status(400).json({
+        success: false,
+        message: "Title, description, and event type are required.",
+      });
+    }
+
+    if (!safeStartDate || !safeStartTime || !safeTimezone) {
+      client.release();
+      return res.status(400).json({
+        success: false,
+        message: "Start date, start time, and timezone are required.",
+      });
+    }
+
+    if (!safeIsVirtual && (!safeCity || !safeCountry)) {
+      client.release();
+      return res.status(400).json({
+        success: false,
+        message: "City and country are required for in-person events.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const existingResult = await client.query(
+      `
+      SELECT id, status, owner_user_id
+      FROM event_submissions
+      WHERE id = $1
+        AND owner_user_id = $2
+      LIMIT 1
+      `,
+      [eventId, req.user.id]
+    );
+
+    if (existingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      client.release();
+      return res.status(404).json({
+        success: false,
+        message: "Event not found or you do not own this event.",
+      });
+    }
+
+    const previousStatus = existingResult.rows[0].status;
+    const nextStatus =
+      previousStatus === "approved" || previousStatus === "rejected"
+        ? "pending"
+        : previousStatus || "pending";
+
+    await client.query(
+      `
+      UPDATE event_submissions
+      SET
+        title = $1,
+        description = $2,
+        event_type = $3,
+        status = $4,
+        updated_at = NOW()
+      WHERE id = $5
+        AND owner_user_id = $6
+      `,
+      [
+        safeTitle,
+        safeDescription,
+        safeEventType,
+        nextStatus,
+        eventId,
+        req.user.id,
+      ]
+    );
+
+    await client.query(
+      `
+      INSERT INTO event_schedules (
+        event_id,
+        start_date,
+        end_date,
+        start_time,
+        end_time,
+        timezone,
+        schedule_type,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'one_time', NOW())
+      ON CONFLICT (event_id)
+      DO UPDATE SET
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        start_time = EXCLUDED.start_time,
+        end_time = EXCLUDED.end_time,
+        timezone = EXCLUDED.timezone,
+        schedule_type = EXCLUDED.schedule_type,
+        updated_at = NOW()
+      `,
+      [
+        eventId,
+        safeStartDate,
+        safeEndDate,
+        safeStartTime,
+        safeEndTime,
+        safeTimezone,
+      ]
+    );
+
+    await client.query(
+      `
+      INSERT INTO event_locations (
+        event_id,
+        venue_name,
+        address_line_1,
+        city,
+        state_region,
+        country,
+        country_code,
+        is_virtual,
+        timezone,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      ON CONFLICT (event_id)
+      DO UPDATE SET
+        venue_name = EXCLUDED.venue_name,
+        address_line_1 = EXCLUDED.address_line_1,
+        city = EXCLUDED.city,
+        state_region = EXCLUDED.state_region,
+        country = EXCLUDED.country,
+        country_code = EXCLUDED.country_code,
+        is_virtual = EXCLUDED.is_virtual,
+        timezone = EXCLUDED.timezone,
+        updated_at = NOW()
+      `,
+      [
+        eventId,
+        safeVenueName,
+        safeAddressLine1,
+        safeCity,
+        safeStateRegion,
+        safeCountry,
+        safeCountryCode,
+        safeIsVirtual,
+        safeTimezone,
+      ]
+    );
+
+    await client.query(
+      `
+      INSERT INTO event_sponsors (
+        event_id,
+        sponsor_name,
+        contact_email,
+        sponsor_type,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'individual', NOW())
+      ON CONFLICT (event_id)
+      DO UPDATE SET
+        sponsor_name = EXCLUDED.sponsor_name,
+        contact_email = EXCLUDED.contact_email,
+        sponsor_type = EXCLUDED.sponsor_type,
+        updated_at = NOW()
+      `,
+      [eventId, safeSponsorName, safeContactEmail]
+    );
+
+    await client.query(`DELETE FROM event_discovery_index WHERE event_id = $1`, [
+      eventId,
+    ]);
+
+    await client.query("COMMIT");
+    client.release();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        nextStatus === "pending"
+          ? "Event metadata updated and returned to pending review."
+          : "Event metadata updated.",
+      previousStatus,
+      status: nextStatus,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    client.release();
+
+    console.error("updateMyEventMetadata error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update event metadata",
+    });
+  }
+}
