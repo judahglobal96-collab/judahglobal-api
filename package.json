@@ -1,10 +1,11 @@
 {
   "name": "judah-global-backend",
   "version": "1.0.0",
-  "main": "src/server.ts",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts"
-  },
+  "dev": "tsx watch src/server.ts",
+  "build": "tsc",
+  "start": "node dist/server.js"
+ },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
