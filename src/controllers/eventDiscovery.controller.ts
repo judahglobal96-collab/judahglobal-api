@@ -355,12 +355,11 @@ const totalPages = Math.max(1, Math.ceil(total / limit));
       },
       results: result.rows,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error loading discovered events:", error);
       return res.status(500).json({
       error: "Failed to load discovered events",
-      details: error instanceof Error ? error.message : String(error),
-});  
+      details: error?.message || error?.detail || JSON.stringify(error),});  
 }
 }
 
