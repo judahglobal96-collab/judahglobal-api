@@ -246,83 +246,28 @@ async function getPromoPlacementsByTypes(
 
 export async function getAllDiscoveredEvents(req: Request, res: Response) {
   try {
-    const page = parsePositiveInt(req.query.page, 1);
-    const limit = parsePositiveInt(req.query.limit, 12);
-    const offset = (page - 1) * limit;
+    const result = await db.query(`
+      SELECT
+        event_id,
+        title,
+        city,
+        starts_at_utc
+      FROM event_discovery_index
+      LIMIT 5
+    `);
 
-    const {
-      search,
-      city,
-      stateRegion,
-      country,
-      category,
-      majorEventOnly,
-      whereClause,
-      params,
-      nextParamIndex,
-    } = buildDiscoveryFilters(req);
-
-    const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
-    const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
-
-    const countQuery = `
-      SELECT COUNT(*)::int AS total
-      FROM event_discovery_index e
-      WHERE ${whereClause}
-    `;
-
-let countResult = await db.query(countQuery, params);
-let total = countResult.rows[0]?.total ?? 0;
-
-let effectiveWhereClause = whereClause;
-let effectiveParams = params;
-let effectiveNextParamIndex = nextParamIndex;
-let fallback = false;
-
-if (total === 0 && country) {
-  req.query.country = "";
-  const fallbackFilters = buildDiscoveryFilters(req, false);
-
-  effectiveWhereClause = `
-  ${fallbackFilters.whereClause}
-  AND COALESCE(e.is_featured, false) = false
-  AND NOT (${featuredBadgeExistsSql})
-  AND NOT (${majorEventExistsSql})
-`;
-  effectiveParams = fallbackFilters.params;
-  effectiveNextParamIndex = fallbackFilters.nextParamIndex;
-  fallback = true;
-
-  const fallbackCountQuery = `
-    SELECT COUNT(*)::int AS total
-    FROM event_discovery_index e
-    WHERE ${effectiveWhereClause}
-  `;
-
-  countResult = await db.query(fallbackCountQuery, effectiveParams);
-  total = countResult.rows[0]?.total ?? 0;
-}
-
-const totalPages = Math.max(1, Math.ceil(total / limit));
-const dataQuery = `
-  SELECT
-    event_id,
-    title,
-    city,
-    starts_at_utc
-  FROM event_discovery_index
-  LIMIT 5
-`;
-
-const dataParams: any[] = [];
-const result = await db.query(dataQuery, dataParams);
-    
+    return res.json({
+      success: true,
+      results: result.rows,
+    });
   } catch (error: any) {
-    console.error("Error loading discovered events:", error);
-      return res.status(500).json({
-      error: "Failed to load discovered events",
-      details: error?.message || error?.detail || JSON.stringify(error),});  
-}
+    console.error("SIMPLE EVENTS TEST ERROR:", error);
+
+    return res.status(500).json({
+      error: "Simple events test failed",
+      details: error?.message || error?.code || JSON.stringify(error),
+    });
+  }
 }
 
 export async function getFeaturedEvents(_req: Request, res: Response) {
