@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const adminMediaReview_controller_1 = require("../controllers/adminMediaReview.controller");
+const router = (0, express_1.Router)();
+router.get("/pending", adminMediaReview_controller_1.getPendingMediaReviews);
+router.get("/approved", adminMediaReview_controller_1.getApprovedMediaReviews);
+router.get("/rejected", adminMediaReview_controller_1.getRejectedMediaReviews);
+router.patch("/:mediaId/approve", adminMediaReview_controller_1.approveMediaReview);
+router.patch("/:mediaId/reject", adminMediaReview_controller_1.rejectMediaReview);
+router.get("/event/:eventId", adminMediaReview_controller_1.getMediaReviewEventDetail);
+exports.default = router;

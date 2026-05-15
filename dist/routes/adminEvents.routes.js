@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const adminEvents_controller_1 = require("../controllers/adminEvents.controller");
+const router = (0, express_1.Router)();
+router.get("/events/pending", adminEvents_controller_1.getPendingEvents);
+router.get("/events/rejected", adminEvents_controller_1.getRejectedEvents);
+router.get("/approved-events", adminEvents_controller_1.getApprovedEvents);
+router.get("/org/:orgUuid/approved-events", adminEvents_controller_1.getApprovedEventsByOrgUuid);
+router.get("/events/:eventId", adminEvents_controller_1.getAdminEventById);
+router.get("/events/:eventId/logs", adminEvents_controller_1.getEventLogs);
+router.get("/events/:eventId/paid-promos", adminEvents_controller_1.getEventPaidPromos);
+router.patch("/events/:eventId/approve", adminEvents_controller_1.approveEvent);
+router.get("/support-lookup", adminEvents_controller_1.getAdminSupportLookup);
+router.patch("/events/:eventId/featured", adminEvents_controller_1.updateFeaturedStatus);
+router.patch("/events/:eventId/reject", adminEvents_controller_1.rejectEvent);
+router.patch("/events/:eventId/waive-payment", adminEvents_controller_1.waiveEventPayment);
+exports.default = router;

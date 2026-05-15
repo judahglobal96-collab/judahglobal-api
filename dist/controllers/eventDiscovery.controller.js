@@ -1,0 +1,762 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getHomepagePromos = void 0;
+exports.getAllDiscoveredEvents = getAllDiscoveredEvents;
+exports.getFeaturedEvents = getFeaturedEvents;
+exports.getHomepageHeroPlacement = getHomepageHeroPlacement;
+exports.getHomepageTopRowPlacements = getHomepageTopRowPlacements;
+exports.getDiscoveryTopRowPlacements = getDiscoveryTopRowPlacements;
+exports.getMajorEvents = getMajorEvents;
+exports.searchDiscoveredEvents = searchDiscoveredEvents;
+exports.getDiscoveredEventById = getDiscoveredEventById;
+exports.indexEventForDiscovery = indexEventForDiscovery;
+const db_1 = require("../config/db");
+function isValidUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function normalizeTime(value) {
+    if (!value)
+        return null;
+    return String(value).split(".")[0].padEnd(8, ":00");
+}
+function parsePositiveInt(value, fallback) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0)
+        return fallback;
+    return Math.floor(parsed);
+}
+function getSearchTerm(req) {
+    return String(req.query.search || req.query.q || req.query.keyword || "").trim();
+}
+function getFilterValue(value) {
+    return String(value || "").trim();
+}
+function getBooleanQueryParam(value) {
+    const normalized = String(value || "")
+        .trim()
+        .toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+}
+function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
+    return `
+    EXISTS (
+      SELECT 1
+      FROM ad_campaign_items fci
+      INNER JOIN ad_campaigns fc
+        ON fc.id = fci.campaign_id
+      WHERE fc.linked_event_id = ${eventIdReference}
+        AND fci.placement_type = 'featured_badge'
+        AND fc.status = 'paid'
+        AND fci.status = 'paid'
+        AND CURRENT_DATE BETWEEN
+          (fci.placement_date AT TIME ZONE 'UTC')::date
+          AND (
+            (fci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
+          )::date
+    )
+  `;
+}
+function buildMajorEventExistsSql(eventIdReference = "e.event_id") {
+    return `
+      EXISTS (
+        SELECT 1
+        FROM event_promotions ep
+        WHERE ep.event_id = ${eventIdReference}
+          AND ep.placement_type = 'major_event'
+          AND ep.status = 'active'
+          AND ep.expires_at > NOW()
+      )
+    `;
+}
+function buildDiscoveryFilters(req, useDefaultCountry = true) {
+    const search = getSearchTerm(req);
+    const city = getFilterValue(req.query.city);
+    const stateRegion = getFilterValue(req.query.state_region);
+    const country = getFilterValue(req.query.country) || (useDefaultCountry ? "United States" : "");
+    const category = getFilterValue(req.query.category);
+    const majorEventOnly = getBooleanQueryParam(req.query.major_event);
+    const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+    const whereParts = [
+        `e.status = 'approved'`,
+        `(
+        e.ends_at_utc IS NULL
+        OR e.ends_at_utc > NOW()
+      )`,
+        `EXISTS (
+        SELECT 1
+        FROM event_submissions es
+        WHERE es.id = e.event_id
+        AND (
+          es.expires_at IS NULL
+          OR es.expires_at > NOW()
+        )
+      )`,
+    ];
+    const params = [];
+    let paramIndex = 1;
+    if (search) {
+        const searchParam = `%${search}%`;
+        whereParts.push(`
+      (
+        e.title ILIKE $${paramIndex} OR
+        e.short_description ILIKE $${paramIndex} OR
+        e.description ILIKE $${paramIndex} OR
+        e.sponsor_name ILIKE $${paramIndex} OR
+        e.category_key ILIKE $${paramIndex}
+      )
+    `);
+        params.push(searchParam);
+        paramIndex += 1;
+    }
+    if (city) {
+        whereParts.push(`e.city ILIKE $${paramIndex}`);
+        params.push(`%${city}%`);
+        paramIndex += 1;
+    }
+    if (stateRegion) {
+        whereParts.push(`e.state_region ILIKE $${paramIndex}`);
+        params.push(`%${stateRegion}%`);
+        paramIndex += 1;
+    }
+    if (country) {
+        whereParts.push(`e.country ILIKE $${paramIndex}`);
+        params.push(`%${country}%`);
+        paramIndex += 1;
+    }
+    if (category) {
+        whereParts.push(`e.category_key ILIKE $${paramIndex}`);
+        params.push(`%${category}%`);
+        paramIndex += 1;
+    }
+    if (majorEventOnly) {
+        whereParts.push(`(${majorEventExistsSql})`);
+    }
+    return {
+        search,
+        city,
+        stateRegion,
+        country,
+        category,
+        majorEventOnly,
+        whereClause: whereParts.join(" AND "),
+        params,
+        nextParamIndex: paramIndex,
+    };
+}
+function buildEventCardSelectSql(options) {
+    const featuredExpression = options.isFeaturedExpression ||
+        `(COALESCE(e.is_featured, false) OR ${buildFeaturedBadgeExistsSql("e.event_id")})`;
+    return `
+    e.event_id,
+    e.event_code,
+    e.title,
+    e.short_description,
+    e.description,
+    e.city,
+    e.state_region,
+    e.country,
+    e.timezone,
+    e.starts_at_utc,
+    e.ends_at_utc,
+    e.sponsor_name,
+    e.status,
+    ${featuredExpression} AS is_featured,
+    ${options.isMajorEventExpression} AS is_major_event,
+    COALESCE(e.is_virtual, false) AS is_virtual,
+    ${options.mediaExpression} AS media_url,
+    sp.logo_url AS sponsor_logo_url
+  `;
+}
+async function getPromoPlacementsByTypes(placementTypes, limit, region) {
+    const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+    const result = await db_1.db.query(`
+    SELECT
+      ci.placement_type,
+      ci.placement_date,
+      ${buildEventCardSelectSql({
+        mediaExpression: "pm.file_url",
+        isMajorEventExpression: `(${majorEventExistsSql})`,
+    })}
+    FROM ad_campaign_items ci
+    INNER JOIN ad_campaigns c
+      ON c.id = ci.campaign_id
+    INNER JOIN campaign_promo_media pm
+      ON pm.campaign_item_id = ci.id
+     AND pm.moderation_status = 'approved'
+     AND pm.is_active = true
+    INNER JOIN event_discovery_index e
+      ON e.event_id = c.linked_event_id
+     AND e.status = 'approved'
+      AND (
+        e.ends_at_utc IS NULL
+        OR e.ends_at_utc > NOW()
+      )
+    LEFT JOIN event_sponsors sp
+      ON sp.event_id = e.event_id
+    WHERE ci.placement_type = ANY($1::text[])
+      AND c.status = 'paid'
+      AND ci.status = 'paid'
+      AND (
+      $3::text IS NULL
+      OR e.country ILIKE $3::text
+    )
+          AND CURRENT_DATE BETWEEN
+        (ci.placement_date AT TIME ZONE 'UTC')::date
+        AND (
+          (ci.placement_date AT TIME ZONE 'UTC')::date +
+          ((GREATEST(ci.quantity, 1) * 7) - 1) * INTERVAL '1 day'
+        )::date
+    ORDER BY
+      (ci.placement_date AT TIME ZONE 'UTC')::date ASC,
+      pm.updated_at DESC,
+      e.starts_at_utc ASC
+    LIMIT $2
+    `, [placementTypes, limit, region ? `%${region}%` : null]);
+    return result.rows;
+}
+async function getAllDiscoveredEvents(req, res) {
+    try {
+        const page = parsePositiveInt(req.query.page, 1);
+        const limit = parsePositiveInt(req.query.limit, 12);
+        const offset = (page - 1) * limit;
+        const { search, city, stateRegion, country, category, majorEventOnly, whereClause, params, nextParamIndex, } = buildDiscoveryFilters(req);
+        const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
+        const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+        const countQuery = `
+      SELECT COUNT(*)::int AS total
+      FROM event_discovery_index e
+      WHERE ${whereClause}
+    `;
+        let countResult = await db_1.db.query(countQuery, params);
+        let total = countResult.rows[0]?.total ?? 0;
+        let effectiveWhereClause = whereClause;
+        let effectiveParams = params;
+        let effectiveNextParamIndex = nextParamIndex;
+        let fallback = false;
+        if (total === 0 && country) {
+            req.query.country = "";
+            const fallbackFilters = buildDiscoveryFilters(req, false);
+            effectiveWhereClause = `
+  ${fallbackFilters.whereClause}
+  AND COALESCE(e.is_featured, false) = false
+  AND NOT (${featuredBadgeExistsSql})
+  AND NOT (${majorEventExistsSql})
+`;
+            effectiveParams = fallbackFilters.params;
+            effectiveNextParamIndex = fallbackFilters.nextParamIndex;
+            fallback = true;
+            const fallbackCountQuery = `
+    SELECT COUNT(*)::int AS total
+    FROM event_discovery_index e
+    WHERE ${effectiveWhereClause}
+  `;
+            countResult = await db_1.db.query(fallbackCountQuery, effectiveParams);
+            total = countResult.rows[0]?.total ?? 0;
+        }
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        const dataQuery = `
+      SELECT
+        ${buildEventCardSelectSql({
+            mediaExpression: "media.file_url",
+            isMajorEventExpression: `(${majorEventExistsSql})`,
+            isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+        })}
+      FROM event_discovery_index e
+      LEFT JOIN LATERAL (
+        SELECT em.file_url
+        FROM event_media em
+        WHERE em.event_id = e.event_id
+          AND em.is_primary = true
+          AND em.moderation_status = 'approved'
+        ORDER BY em.created_at DESC
+        LIMIT 1
+      ) media ON true
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.event_id
+      WHERE ${effectiveWhereClause}
+      ORDER BY
+        (${majorEventExistsSql}) DESC,
+        (COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql}) DESC,
+        e.starts_at_utc ASC
+      
+        LIMIT $${effectiveNextParamIndex}
+        OFFSET $${effectiveNextParamIndex + 1}    `;
+        const dataParams = [...effectiveParams, limit, offset];
+        const result = await db_1.db.query(dataQuery, dataParams);
+        return res.json({
+            success: true,
+            page,
+            limit,
+            total,
+            total_pages: totalPages,
+            fallback,
+            fallback_reason: fallback
+                ? "No standard paid events found in selected region; showing broader discovery results."
+                : null,
+            filters: {
+                search,
+                city,
+                state_region: stateRegion,
+                country,
+                category,
+                major_event: majorEventOnly,
+            },
+            results: result.rows,
+        });
+    }
+    catch (error) {
+        console.error("Error loading discovered events:", error);
+        return res.status(500).json({ error: "Failed to load discovered events" });
+    }
+}
+async function getFeaturedEvents(_req, res) {
+    try {
+        const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
+        const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+        const result = await db_1.db.query(`
+      SELECT
+        ${buildEventCardSelectSql({
+            mediaExpression: "media.file_url",
+            isMajorEventExpression: `(${majorEventExistsSql})`,
+            isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+        })}
+      FROM event_discovery_index e
+      LEFT JOIN LATERAL (
+        SELECT em.file_url
+        FROM event_media em
+        WHERE em.event_id = e.event_id
+          AND em.is_primary = true
+          AND em.moderation_status = 'approved'
+        ORDER BY em.created_at DESC
+        LIMIT 1
+      ) media ON true
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.event_id
+      WHERE e.status = 'approved'
+      AND (
+        e.expires_at IS NULL
+        OR e.expires_at > NOW()
+      )
+          AND (COALESCE(e.is_featured, false) = true OR ${featuredBadgeExistsSql})
+      ORDER BY e.starts_at_utc ASC
+      `);
+        return res.json(result.rows);
+    }
+    catch (error) {
+        console.error("Error loading featured events:", error);
+        return res.status(500).json({ error: "Failed to load featured events" });
+    }
+}
+async function getHomepageHeroPlacement(_req, res) {
+    try {
+        const results = await getPromoPlacementsByTypes(["hero"], 2);
+        return res.json({
+            success: true,
+            results,
+        });
+    }
+    catch (error) {
+        console.error("Error loading homepage hero placement:", error);
+        return res.status(500).json({
+            error: "Failed to load homepage hero placement",
+        });
+    }
+}
+async function getHomepageTopRowPlacements(req, res) {
+    try {
+        const region = String(req.query.region || "").trim();
+        const results = await getPromoPlacementsByTypes(["homepage_top", "homepage_top_row"], 3, region);
+        return res.json({
+            success: true,
+            results,
+        });
+    }
+    catch (error) {
+        console.error("Error loading homepage top row placements:", error);
+        return res.status(500).json({
+            error: "Failed to load homepage top row placements",
+        });
+    }
+}
+async function getDiscoveryTopRowPlacements(req, res) {
+    try {
+        const region = String(req.query.region || "").trim();
+        const results = await getPromoPlacementsByTypes(["discovery_top", "discovery_top_row"], 3, region);
+        return res.json({
+            success: true,
+            results,
+        });
+    }
+    catch (error) {
+        console.error("Error loading discovery top row placements:", error);
+        return res.status(500).json({
+            error: "Failed to load discovery top row placements",
+        });
+    }
+}
+const getHomepagePromos = async (req, res) => {
+    try {
+        const region = String(req.query.region || "").trim();
+        const hero = await getPromoPlacementsByTypes(["hero"], 2, region);
+        const topRow = await getPromoPlacementsByTypes(["homepage_top", "homepage_top_row"], 3, region);
+        return res.json({
+            success: true,
+            hero,
+            topRow,
+        });
+    }
+    catch (err) {
+        console.error("getHomepagePromos error:", err);
+        return res.status(500).json({ success: false });
+    }
+};
+exports.getHomepagePromos = getHomepagePromos;
+async function getMajorEvents(req, res) {
+    try {
+        const page = parsePositiveInt(req.query.page, 1);
+        const limit = parsePositiveInt(req.query.limit, 12);
+        const offset = (page - 1) * limit;
+        const region = String(req.query.region || "").trim();
+        const regionParam = region ? `%${region}%` : null;
+        const countQuery = `
+      SELECT COUNT(DISTINCT e.event_id)::int AS total
+      FROM event_promotions ep
+      INNER JOIN event_discovery_index e
+        ON e.event_id = ep.event_id
+       AND e.status = 'approved'
+       AND (
+          e.ends_at_utc IS NULL
+          OR e.ends_at_utc > NOW()
+      )
+      WHERE ep.placement_type = 'major_event'
+        AND ep.status = 'active'
+        AND ep.expires_at > NOW()
+        AND (
+          $1::text IS NULL
+          OR e.country ILIKE $1::text
+        )
+   `;
+        const countResult = await db_1.db.query(countQuery, [regionParam]);
+        const total = countResult.rows[0]?.total ?? 0;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
+        const result = await db_1.db.query(`
+      SELECT DISTINCT ON (e.event_id)
+        ${buildEventCardSelectSql({
+            mediaExpression: "media.file_url",
+            isMajorEventExpression: "true",
+            isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+        })},
+        ep.expires_at AS major_event_expires_at
+      FROM event_promotions ep
+      INNER JOIN event_discovery_index e
+        ON e.event_id = ep.event_id
+       AND e.status = 'approved'
+      AND (
+        e.ends_at_utc IS NULL
+        OR e.ends_at_utc > NOW()
+      )
+      LEFT JOIN LATERAL (
+        SELECT em.file_url
+        FROM event_media em
+        WHERE em.event_id = e.event_id
+          AND em.is_primary = true
+          AND em.moderation_status = 'approved'
+        ORDER BY em.created_at DESC
+        LIMIT 1
+      ) media ON true
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.event_id
+        WHERE ep.placement_type = 'major_event'
+          AND ep.status = 'active'
+          AND ep.expires_at > NOW()
+          AND (
+            $3::text IS NULL
+            OR e.country ILIKE $3::text
+        )
+          ORDER BY
+        e.event_id,
+        ep.expires_at DESC,
+        e.starts_at_utc ASC
+      LIMIT $1
+      OFFSET $2
+      `, [limit, offset, regionParam]);
+        return res.json({
+            success: true,
+            page,
+            limit,
+            total,
+            total_pages: totalPages,
+            results: result.rows,
+        });
+    }
+    catch (error) {
+        console.error("Error loading major events:", error);
+        return res.status(500).json({ error: "Failed to load major events" });
+    }
+}
+async function searchDiscoveredEvents(req, res) {
+    try {
+        const { whereClause, params, search, city, stateRegion, country, category, majorEventOnly, } = buildDiscoveryFilters(req);
+        const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
+        const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+        const result = await db_1.db.query(`
+      SELECT
+        ${buildEventCardSelectSql({
+            mediaExpression: "media.file_url",
+            isMajorEventExpression: `(${majorEventExistsSql})`,
+            isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+        })}
+      FROM event_discovery_index e
+      LEFT JOIN LATERAL (
+        SELECT em.file_url
+        FROM event_media em
+        WHERE em.event_id = e.event_id
+          AND em.is_primary = true
+          AND em.moderation_status = 'approved'
+        ORDER BY em.created_at DESC
+        LIMIT 1
+      ) media ON true
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.event_id
+      WHERE ${whereClause}
+      ORDER BY
+        (${majorEventExistsSql}) DESC,
+        (COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql}) DESC,
+        e.starts_at_utc ASC
+      `, params);
+        return res.json({
+            success: true,
+            filters: {
+                search,
+                city,
+                state_region: stateRegion,
+                country,
+                category,
+                major_event: majorEventOnly,
+            },
+            results: result.rows,
+        });
+    }
+    catch (error) {
+        console.error("Error searching discovered events:", error);
+        return res.status(500).json({ error: "Failed to search discovered events" });
+    }
+}
+async function getDiscoveredEventById(req, res) {
+    try {
+        const eventIdParam = req.params.eventId;
+        const eventId = Array.isArray(eventIdParam) ? eventIdParam[0] : eventIdParam;
+        if (!eventId || !isValidUuid(eventId)) {
+            return res.status(400).json({ error: "Invalid event ID" });
+        }
+        const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
+        const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+        const result = await db_1.db.query(`
+      SELECT
+        ${buildEventCardSelectSql({
+            mediaExpression: "media.file_url",
+            isMajorEventExpression: `(${majorEventExistsSql})`,
+            isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+        })},
+        sp.contact_email,
+        loc.venue_name,
+        loc.address_line_1 AS address_line_1,
+        loc.city AS location_city,
+        loc.state_region AS location_state,
+        flyer.file_url AS official_flyer_url
+      FROM event_discovery_index e
+      LEFT JOIN LATERAL (
+        SELECT em.file_url
+        FROM event_media em
+        WHERE em.event_id = e.event_id
+          AND em.is_primary = true
+          AND em.moderation_status = 'approved'
+        ORDER BY em.created_at DESC
+        LIMIT 1
+      ) media ON true
+      LEFT JOIN LATERAL (
+        SELECT pm.file_url
+        FROM campaign_promo_media pm
+        INNER JOIN ad_campaign_items ci
+          ON ci.id = pm.campaign_item_id
+        INNER JOIN ad_campaigns c
+          ON c.id = ci.campaign_id
+        WHERE c.linked_event_id = e.event_id
+          AND ci.placement_type = 'official_flyer'
+          AND c.status = 'paid'
+          AND ci.status = 'paid'
+          AND pm.moderation_status = 'approved'
+          AND pm.is_active = true
+        ORDER BY pm.updated_at DESC, pm.created_at DESC
+        LIMIT 1
+      ) flyer ON true
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.event_id
+      LEFT JOIN event_locations loc
+        ON loc.event_id = e.event_id
+      WHERE e.event_id = $1
+      LIMIT 1
+      `, [eventId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Discovered event not found" });
+        }
+        return res.json(result.rows[0]);
+    }
+    catch (error) {
+        console.error("Error loading discovered event:", error);
+        return res.status(500).json({ error: "Failed to load discovered event" });
+    }
+}
+async function indexEventForDiscovery(req, res) {
+    try {
+        const eventIdParam = req.params.eventId;
+        const eventId = Array.isArray(eventIdParam) ? eventIdParam[0] : eventIdParam;
+        console.log("=== MANUAL INDEX START ===");
+        console.log("MANUAL INDEX eventId:", eventId);
+        if (!eventId || !isValidUuid(eventId)) {
+            return res.status(400).json({ error: "Invalid event ID" });
+        }
+        const joinedResult = await db_1.db.query(`
+      SELECT
+        es.id,
+        es.event_code,
+        es.title,
+        es.description,
+        es.event_type,
+        es.submitter_email,
+        sch.timezone AS schedule_timezone,
+        sch.start_date,
+        sch.end_date,
+        sch.start_time,
+        sch.end_time,
+        loc.city,
+        loc.state_region,
+        loc.country,
+        loc.country_code,
+        loc.is_virtual,
+        sp.sponsor_name
+      FROM event_submissions es
+      LEFT JOIN event_schedules sch ON sch.event_id = es.id
+      LEFT JOIN event_locations loc ON loc.event_id = es.id
+      LEFT JOIN event_sponsors sp ON sp.event_id = es.id
+      WHERE es.id = $1
+      LIMIT 1
+      `, [eventId]);
+        console.log("MANUAL JOIN ROW COUNT:", joinedResult.rows.length);
+        console.log("MANUAL JOIN FIRST ROW:", joinedResult.rows[0]);
+        if (joinedResult.rows.length === 0) {
+            return res.status(404).json({ error: "Event not found for indexing" });
+        }
+        const event = joinedResult.rows[0];
+        if (!event.title) {
+            return res.status(500).json({ error: "Missing event title" });
+        }
+        if (!event.start_date || !event.start_time) {
+            return res.status(500).json({ error: "Missing event schedule fields" });
+        }
+        if (!event.city || !event.country) {
+            return res.status(500).json({ error: "Missing event location fields" });
+        }
+        if (!event.schedule_timezone) {
+            return res.status(500).json({ error: "Missing timezone" });
+        }
+        const normalizedStartTime = normalizeTime(event.start_time);
+        const normalizedEndTime = normalizeTime(event.end_time);
+        const shortDescription = event.description?.slice(0, 300) ?? null;
+        const sponsorName = event.sponsor_name ?? event.submitter_email ?? null;
+        await db_1.db.query(`DELETE FROM event_discovery_index WHERE event_id = $1`, [event.id]);
+        await db_1.db.query(`
+      INSERT INTO event_discovery_index (
+        event_id,
+        event_code,
+        status,
+        title,
+        short_description,
+        description,
+        category_key,
+        sponsor_name,
+        city,
+        state_region,
+        country,
+        country_code,
+        timezone,
+        starts_at_utc,
+        ends_at_utc,
+        occurrence_date,
+        is_featured,
+        is_virtual,
+        search_document,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1::uuid,
+        $2::varchar(40),
+        'approved'::varchar(20),
+        $3::varchar(180),
+        $4::varchar(300),
+        $5::text,
+        $6::varchar(100),
+        $7::varchar(180),
+        $8::varchar(120),
+        $9::varchar(120),
+        $10::varchar(120),
+        $11::varchar(10),
+        $12::varchar(80),
+        (($13::date + $14::time) AT TIME ZONE $17::text),
+        CASE
+          WHEN $15::date IS NOT NULL AND $16::time IS NOT NULL
+            THEN (($15::date + $16::time) AT TIME ZONE $17::text)
+          ELSE NULL
+        END,
+        $13::date,
+        false,
+        COALESCE($18, false),
+        to_tsvector(
+          'english',
+          coalesce($3::text, '') || ' ' ||
+          coalesce($5::text, '') || ' ' ||
+          coalesce($7::text, '') || ' ' ||
+          coalesce($8::text, '') || ' ' ||
+          coalesce($9::text, '') || ' ' ||
+          coalesce($10::text, '')
+        ),
+        NOW(),
+        NOW()
+      )
+      `, [
+            event.id,
+            event.event_code,
+            event.title,
+            shortDescription,
+            event.description,
+            event.event_type,
+            sponsorName,
+            event.city,
+            event.state_region,
+            event.country,
+            event.country_code,
+            event.schedule_timezone,
+            event.start_date,
+            normalizedStartTime,
+            event.end_date,
+            normalizedEndTime,
+            event.schedule_timezone,
+            event.is_virtual,
+        ]);
+        console.log("=== MANUAL INDEX SUCCESS ===", event.id);
+        return res.status(200).json({
+            success: true,
+            message: "Event indexed successfully",
+            eventId: event.id,
+        });
+    }
+    catch (error) {
+        console.error("MANUAL INDEX ERROR:", error);
+        return res.status(500).json({
+            error: "Failed to index event",
+            details: error instanceof Error ? error.message : error,
+        });
+    }
+}

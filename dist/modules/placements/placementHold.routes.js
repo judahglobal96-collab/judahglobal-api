@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const placementHold_controller_1 = require("./controllers/placementHold.controller");
+const auth_middleware_1 = require("../../middleware/auth.middleware");
+const router = (0, express_1.Router)();
+router.post("/hold", auth_middleware_1.requireAuth, placementHold_controller_1.createPlacementHoldSessionController);
+router.get("/hold/:holdSessionId", auth_middleware_1.requireAuth, placementHold_controller_1.getPlacementHoldSessionController);
+router.delete("/hold/:holdSessionId", auth_middleware_1.requireAuth, placementHold_controller_1.releasePlacementHoldSessionController);
+exports.default = router;

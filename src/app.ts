@@ -32,12 +32,13 @@ import promotionSyncRoutes from "./routes/promotionSync.routes";
 
 const app = express();
 
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://judah-global-frontend-production.up.railway.app"
+  ],
+  credentials: true,
+}));
 
 /**
  * Stripe webhook FIRST (raw body required)
