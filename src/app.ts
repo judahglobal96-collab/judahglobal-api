@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import "./config/db";
+import { db } from "./config/db";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -31,6 +32,25 @@ import userNotificationRoutes from "./routes/userNotification.routes";
 import promotionSyncRoutes from "./routes/promotionSync.routes";
 
 const app = express();
+
+app.get("/db-health", async (_req, res) => {
+  try {
+    const result = await db.query("SELECT NOW() as now");
+
+    res.json({
+      success: true,
+      dbTime: result.rows[0].now,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      code: error?.code,
+      message: error?.message,
+      address: error?.address,
+      port: error?.port,
+    });
+  }
+});
 
 app.use(cors({
   origin: [
