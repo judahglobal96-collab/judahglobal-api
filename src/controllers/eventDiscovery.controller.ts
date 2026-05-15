@@ -304,57 +304,19 @@ if (total === 0 && country) {
 }
 
 const totalPages = Math.max(1, Math.ceil(total / limit));
-    const dataQuery = `
-      SELECT
-        ${buildEventCardSelectSql({
-          mediaExpression: "media.file_url",
-          isMajorEventExpression: `(${majorEventExistsSql})`,
-          isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
-        })}
-      FROM event_discovery_index e
-      LEFT JOIN LATERAL (
-        SELECT em.file_url
-        FROM event_media em
-        WHERE em.event_id = e.event_id
-          AND em.is_primary = true
-          AND em.moderation_status = 'approved'
-        ORDER BY em.created_at DESC
-        LIMIT 1
-      ) media ON true
-      LEFT JOIN event_sponsors sp
-        ON sp.event_id = e.event_id
-      WHERE ${effectiveWhereClause}
-      ORDER BY
-        (${majorEventExistsSql}) DESC,
-        (COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql}) DESC,
-        e.starts_at_utc ASC
-      
-        LIMIT $${effectiveNextParamIndex}
-        OFFSET $${effectiveNextParamIndex + 1}    `;
+const dataQuery = `
+  SELECT
+    event_id,
+    title,
+    city,
+    starts_at_utc
+  FROM event_discovery_index
+  LIMIT 5
+`;
 
-    const dataParams = [...effectiveParams, limit, offset];
-    const result = await db.query(dataQuery, dataParams);
-
-    return res.json({
-      success: true,
-      page,
-      limit,
-      total,
-      total_pages: totalPages,
-      fallback,
-      fallback_reason: fallback
-      ? "No standard paid events found in selected region; showing broader discovery results."
-        : null,
-      filters: {
-        search,
-        city,
-        state_region: stateRegion,
-        country,
-        category,
-        major_event: majorEventOnly,
-      },
-      results: result.rows,
-    });
+const dataParams: any[] = [];
+const result = await db.query(dataQuery, dataParams);
+    
   } catch (error: any) {
     console.error("Error loading discovered events:", error);
       return res.status(500).json({
@@ -669,7 +631,7 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
           isMajorEventExpression: `(${majorEventExistsSql})`,
           isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })},
-        sp.contact_email,
+        sp.contact_email, 
         loc.venue_name,
         loc.address_line_1 AS address_line_1,
         loc.city AS location_city,
