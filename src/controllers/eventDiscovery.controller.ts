@@ -357,8 +357,11 @@ const totalPages = Math.max(1, Math.ceil(total / limit));
     });
   } catch (error) {
     console.error("Error loading discovered events:", error);
-    return res.status(500).json({ error: "Failed to load discovered events" });
-  }
+      return res.status(500).json({
+      error: "Failed to load discovered events",
+      details: error instanceof Error ? error.message : String(error),
+});  
+}
 }
 
 export async function getFeaturedEvents(_req: Request, res: Response) {
