@@ -35,15 +35,23 @@ const app = express();
 
 app.get("/db-health", async (_req, res) => {
   try {
+    const dbUrl = process.env.DATABASE_URL;
+
     const result = await db.query("SELECT NOW() as now");
 
     res.json({
       success: true,
+      databaseUrlExists: !!dbUrl,
+      databaseHost: dbUrl?.split("@")[1]?.split("/")[0],
       dbTime: result.rows[0].now,
     });
   } catch (error: any) {
+    const dbUrl = process.env.DATABASE_URL;
+
     res.status(500).json({
       success: false,
+      databaseUrlExists: !!dbUrl,
+      databaseHost: dbUrl?.split("@")[1]?.split("/")[0],
       code: error?.code,
       message: error?.message,
       address: error?.address,
