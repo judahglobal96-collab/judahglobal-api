@@ -1,6 +1,3 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import "./config/db";
 import { db } from "./config/db";
 import express from "express";
