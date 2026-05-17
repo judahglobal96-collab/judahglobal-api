@@ -32,6 +32,12 @@ const app = express();
 
 app.get("/db-health", async (_req, res) => {
   try {
+    console.log("=== /db-health ENDPOINT HIT ===");
+    console.log("All env vars:", Object.keys(process.env).filter(k => k.includes("DATABASE") || k.includes("PG")).join(", "));
+    console.log("process.env.DATABASE_URL:", process.env.DATABASE_URL);
+    console.log("typeof DATABASE_URL:", typeof process.env.DATABASE_URL);
+    console.log("DATABASE_URL length:", process.env.DATABASE_URL?.length);
+    
     const dbUrl = process.env.DATABASE_URL;
     console.log("DEBUG: DATABASE_URL exists:", !!dbUrl);
     console.log("DEBUG: DATABASE_URL value:", dbUrl ? "***hidden***" : "undefined");
