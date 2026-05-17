@@ -260,14 +260,17 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
       success: true,
       results: result.rows,
     });
-  } catch (error: any) {
-    console.error("SIMPLE EVENTS TEST ERROR:", error);
+} catch (error: any) {
+  console.error("SIMPLE EVENTS TEST ERROR:", error);
 
-    return res.status(500).json({
-      error: "Simple events test failed",
-      details: error?.message || error?.code || JSON.stringify(error),
-    });
-  }
+  return res.status(500).json({
+    error: "Simple events test failed",
+    message: error?.message,
+    code: error?.code,
+    detail: error?.detail,
+    stack: error?.stack,
+  });
+}
 }
 
 export async function getFeaturedEvents(_req: Request, res: Response) {

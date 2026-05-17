@@ -234,7 +234,10 @@ async function getAllDiscoveredEvents(req, res) {
         console.error("SIMPLE EVENTS TEST ERROR:", error);
         return res.status(500).json({
             error: "Simple events test failed",
-            details: error?.message || error?.code || JSON.stringify(error),
+            message: error?.message,
+            code: error?.code,
+            detail: error?.detail,
+            stack: error?.stack,
         });
     }
 }
