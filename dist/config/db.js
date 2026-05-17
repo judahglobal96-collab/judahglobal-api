@@ -10,7 +10,7 @@ exports.db = new pg_1.Pool({
     },
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
-    max: 20,
+    max: 1,
 });
 exports.db.on("connect", () => {
     console.log("PostgreSQL connected successfully");

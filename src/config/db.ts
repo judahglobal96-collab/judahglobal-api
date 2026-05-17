@@ -10,7 +10,7 @@ export const db = new Pool({
   
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
-  max: 20,
+  max: 1,
 });
 
 db.on("connect", () => {
