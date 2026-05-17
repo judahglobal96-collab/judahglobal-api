@@ -35,6 +35,14 @@ const userNotificationCron_1 = require("./jobs/userNotificationCron");
 const userNotification_routes_1 = __importDefault(require("./routes/userNotification.routes"));
 const promotionSync_routes_1 = __importDefault(require("./routes/promotionSync.routes"));
 const app = (0, express_1.default)();
+app.get("/env-check", (_req, res) => {
+    res.json({
+        databaseUrlExists: !!process.env.DATABASE_URL,
+        databaseUrlHost: process.env.DATABASE_URL
+            ? new URL(process.env.DATABASE_URL).host
+            : null,
+    });
+});
 app.get("/db-health", async (_req, res) => {
     try {
         const dbUrl = process.env.DATABASE_URL;
