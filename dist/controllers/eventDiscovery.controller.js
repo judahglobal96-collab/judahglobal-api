@@ -216,97 +216,26 @@ async function getPromoPlacementsByTypes(placementTypes, limit, region) {
 }
 async function getAllDiscoveredEvents(req, res) {
     try {
-        const page = parsePositiveInt(req.query.page, 1);
-        const limit = parsePositiveInt(req.query.limit, 12);
-        const offset = (page - 1) * limit;
-        const { search, city, stateRegion, country, category, majorEventOnly, whereClause, params, nextParamIndex, } = buildDiscoveryFilters(req);
-        const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
-        const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
-        const countQuery = `
-      SELECT COUNT(*)::int AS total
-      FROM event_discovery_index e
-      WHERE ${whereClause}
-    `;
-        let countResult = await db_1.db.query(countQuery, params);
-        let total = countResult.rows[0]?.total ?? 0;
-        let effectiveWhereClause = whereClause;
-        let effectiveParams = params;
-        let effectiveNextParamIndex = nextParamIndex;
-        let fallback = false;
-        if (total === 0 && country) {
-            req.query.country = "";
-            const fallbackFilters = buildDiscoveryFilters(req, false);
-            effectiveWhereClause = `
-  ${fallbackFilters.whereClause}
-  AND COALESCE(e.is_featured, false) = false
-  AND NOT (${featuredBadgeExistsSql})
-  AND NOT (${majorEventExistsSql})
-`;
-            effectiveParams = fallbackFilters.params;
-            effectiveNextParamIndex = fallbackFilters.nextParamIndex;
-            fallback = true;
-            const fallbackCountQuery = `
-    SELECT COUNT(*)::int AS total
-    FROM event_discovery_index e
-    WHERE ${effectiveWhereClause}
-  `;
-            countResult = await db_1.db.query(fallbackCountQuery, effectiveParams);
-            total = countResult.rows[0]?.total ?? 0;
-        }
-        const totalPages = Math.max(1, Math.ceil(total / limit));
-        const dataQuery = `
+        const result = await db_1.db.query(`
       SELECT
-        ${buildEventCardSelectSql({
-            mediaExpression: "media.file_url",
-            isMajorEventExpression: `(${majorEventExistsSql})`,
-            isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
-        })}
-      FROM event_discovery_index e
-      LEFT JOIN LATERAL (
-        SELECT em.file_url
-        FROM event_media em
-        WHERE em.event_id = e.event_id
-          AND em.is_primary = true
-          AND em.moderation_status = 'approved'
-        ORDER BY em.created_at DESC
-        LIMIT 1
-      ) media ON true
-      LEFT JOIN event_sponsors sp
-        ON sp.event_id = e.event_id
-      WHERE ${effectiveWhereClause}
-      ORDER BY
-        (${majorEventExistsSql}) DESC,
-        (COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql}) DESC,
-        e.starts_at_utc ASC
-      
-        LIMIT $${effectiveNextParamIndex}
-        OFFSET $${effectiveNextParamIndex + 1}    `;
-        const dataParams = [...effectiveParams, limit, offset];
-        const result = await db_1.db.query(dataQuery, dataParams);
+        event_id,
+        title,
+        city,
+        starts_at_utc
+      FROM event_discovery_index
+      LIMIT 5
+    `);
         return res.json({
             success: true,
-            page,
-            limit,
-            total,
-            total_pages: totalPages,
-            fallback,
-            fallback_reason: fallback
-                ? "No standard paid events found in selected region; showing broader discovery results."
-                : null,
-            filters: {
-                search,
-                city,
-                state_region: stateRegion,
-                country,
-                category,
-                major_event: majorEventOnly,
-            },
             results: result.rows,
         });
     }
     catch (error) {
-        console.error("Error loading discovered events:", error);
-        return res.status(500).json({ error: "Failed to load discovered events" });
+        console.error("SIMPLE EVENTS TEST ERROR:", error);
+        return res.status(500).json({
+            error: "Simple events test failed",
+            details: error?.message || error?.code || JSON.stringify(error),
+        });
     }
 }
 async function getFeaturedEvents(_req, res) {
@@ -559,7 +488,7 @@ async function getDiscoveredEventById(req, res) {
             isMajorEventExpression: `(${majorEventExistsSql})`,
             isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })},
-        sp.contact_email,
+        sp.contact_email, 
         loc.venue_name,
         loc.address_line_1 AS address_line_1,
         loc.city AS location_city,

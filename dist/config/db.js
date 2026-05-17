@@ -5,11 +5,9 @@ const pg_1 = require("pg");
 exports.db = new pg_1.Pool({
     connectionString: process.env.DATABASE_URL,
 });
-exports.db.connect()
-    .then((client) => {
+exports.db.on("connect", () => {
     console.log("PostgreSQL connected successfully");
-    client.release();
-})
-    .catch((err) => {
+});
+exports.db.on("error", (err) => {
     console.error("PostgreSQL connection error:", err.message);
 });
