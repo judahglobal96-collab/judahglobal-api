@@ -3,6 +3,10 @@ import { db } from "./config/db";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { promisify } from "util";
+import { lookup } from "dns";
+
+const dnsLookup = promisify(lookup);
 
 import eventPaymentsRoutes from "./modules/eventPayments/eventPayments.routes";
 import { stripeWebhook } from "./modules/payments/webhook.controller";
@@ -33,6 +37,22 @@ const app = express();
 app.get("/db-health", async (_req, res) => {
   try {
     const dbUrl = process.env.DATABASE_URL;
+    console.log("=== /db-health ENDPOINT ===");
+    console.log("DATABASE_URL exists:", !!dbUrl);
+    console.log("DATABASE_URL:", dbUrl);
+    
+    if (dbUrl) {
+      const url = new URL(dbUrl);
+      const hostname = url.hostname;
+      console.log("Hostname from URL:", hostname);
+      
+      try {
+        const result = await dnsLookup(hostname);
+        console.log("DNS lookup result:", result);
+      } catch (dnsErr: any) {
+        console.error("DNS lookup failed:", dnsErr.message);
+      }
+    }
 
     console.log("DATABASE_URL:", dbUrl); // Add this line
 
@@ -46,6 +66,13 @@ app.get("/db-health", async (_req, res) => {
     });
   } catch (error: any) {
     const dbUrl = process.env.DATABASE_URL;
+    console.error("=== /db-health ERROR ===");
+    console.error("DATABASE_URL exists:", !!dbUrl);
+    console.error("DATABASE_URL:", dbUrl);
+    console.error("Error code:", error?.code);
+    console.error("Error message:", error?.message);
+    console.error("Error address:", error?.address);
+    console.error("Error port:", error?.port);
 
     res.status(500).json({
       success: false,
