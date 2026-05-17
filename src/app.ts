@@ -33,6 +33,8 @@ const app = express();
 app.get("/db-health", async (_req, res) => {
   try {
     const dbUrl = process.env.DATABASE_URL;
+    console.log("DEBUG: DATABASE_URL exists:", !!dbUrl);
+    console.log("DEBUG: DATABASE_URL value:", dbUrl ? "***hidden***" : "undefined");
 
     const result = await db.query("SELECT NOW() as now");
 
@@ -44,6 +46,9 @@ app.get("/db-health", async (_req, res) => {
     });
   } catch (error: any) {
     const dbUrl = process.env.DATABASE_URL;
+    console.error("DEBUG: Query failed. DATABASE_URL exists:", !!dbUrl);
+    console.error("DEBUG: Error code:", error?.code);
+    console.error("DEBUG: Error message:", error?.message);
 
     res.status(500).json({
       success: false,
