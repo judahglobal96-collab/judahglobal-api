@@ -53,6 +53,7 @@ app.get("/db-health", async (_req, res) => {
                 console.error("DNS lookup failed:", dnsErr.message);
             }
         }
+        console.log("DATABASE_URL:", dbUrl); // Add this line
         const result = await db_1.db.query("SELECT NOW() as now");
         res.json({
             success: true,

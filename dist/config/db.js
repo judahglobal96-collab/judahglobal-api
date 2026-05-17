@@ -5,6 +5,9 @@ const pg_1 = require("pg");
 exports.db = new pg_1.Pool({
     connectionString: process.env.DATABASE_URL,
     // Add connection timeout and retry logic
+    ssl: {
+        rejectUnauthorized: false,
+    },
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     max: 20,
