@@ -34,6 +34,8 @@ app.get("/db-health", async (_req, res) => {
   try {
     const dbUrl = process.env.DATABASE_URL;
 
+    console.log("DATABASE_URL:", dbUrl); // Add this line
+
     const result = await db.query("SELECT NOW() as now");
 
     res.json({
