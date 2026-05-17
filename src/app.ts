@@ -3,6 +3,10 @@ import { db } from "./config/db";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { promisify } from "util";
+import { lookup } from "dns";
+
+const dnsLookup = promisify(lookup);
 
 import eventPaymentsRoutes from "./modules/eventPayments/eventPayments.routes";
 import { stripeWebhook } from "./modules/payments/webhook.controller";
@@ -32,15 +36,23 @@ const app = express();
 
 app.get("/db-health", async (_req, res) => {
   try {
-    console.log("=== /db-health ENDPOINT HIT ===");
-    console.log("All env vars:", Object.keys(process.env).filter(k => k.includes("DATABASE") || k.includes("PG")).join(", "));
-    console.log("process.env.DATABASE_URL:", process.env.DATABASE_URL);
-    console.log("typeof DATABASE_URL:", typeof process.env.DATABASE_URL);
-    console.log("DATABASE_URL length:", process.env.DATABASE_URL?.length);
-    
     const dbUrl = process.env.DATABASE_URL;
-    console.log("DEBUG: DATABASE_URL exists:", !!dbUrl);
-    console.log("DEBUG: DATABASE_URL value:", dbUrl ? "***hidden***" : "undefined");
+    console.log("=== /db-health ENDPOINT ===");
+    console.log("DATABASE_URL exists:", !!dbUrl);
+    console.log("DATABASE_URL:", dbUrl);
+    
+    if (dbUrl) {
+      const url = new URL(dbUrl);
+      const hostname = url.hostname;
+      console.log("Hostname from URL:", hostname);
+      
+      try {
+        const result = await dnsLookup(hostname);
+        console.log("DNS lookup result:", result);
+      } catch (dnsErr: any) {
+        console.error("DNS lookup failed:", dnsErr.message);
+      }
+    }
 
     const result = await db.query("SELECT NOW() as now");
 
@@ -52,9 +64,13 @@ app.get("/db-health", async (_req, res) => {
     });
   } catch (error: any) {
     const dbUrl = process.env.DATABASE_URL;
-    console.error("DEBUG: Query failed. DATABASE_URL exists:", !!dbUrl);
-    console.error("DEBUG: Error code:", error?.code);
-    console.error("DEBUG: Error message:", error?.message);
+    console.error("=== /db-health ERROR ===");
+    console.error("DATABASE_URL exists:", !!dbUrl);
+    console.error("DATABASE_URL:", dbUrl);
+    console.error("Error code:", error?.code);
+    console.error("Error message:", error?.message);
+    console.error("Error address:", error?.address);
+    console.error("Error port:", error?.port);
 
     res.status(500).json({
       success: false,
