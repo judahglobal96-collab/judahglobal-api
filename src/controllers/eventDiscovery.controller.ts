@@ -263,24 +263,30 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
       results: result.rows,
     });
 
-} catch (error: any) {
-  console.error("SIMPLE EVENTS TEST ERROR FULL:", error);
+  } catch (error: any) {
+    console.error("SIMPLE EVENTS TEST ERROR FULL:", error);
 
-  return res.status(500).json({
-    error: "Simple events test failed",
-    dbUrlHost: process.env.DATABASE_URL?.split("@")[1]?.split("/")[0],
-    errorName: error?.name,
-    errorMessage: error?.message,
-    errorCode: error?.code,
-    errors: error?.errors?.map((e: any) => ({
-      code: e?.code,
-      message: e?.message,
-      address: e?.address,
-      port: e?.port,
-    })),
-  });
-}}
-
+    return res.status(500).json({
+      error: "Simple events test failed",
+      databaseUrlExists: !!process.env.DATABASE_URL,
+      databaseUrlPreview: process.env.DATABASE_URL
+        ? process.env.DATABASE_URL.slice(0, 35)
+        : null,
+      databaseUrlHost: process.env.DATABASE_URL
+        ? new URL(process.env.DATABASE_URL).host
+        : null,
+      errorName: error?.name,
+      errorMessage: error?.message,
+      errorCode: error?.code,
+      errors: error?.errors?.map((e: any) => ({
+        code: e?.code,
+        message: e?.message,
+        address: e?.address,
+        port: e?.port,
+      })),
+    });
+  }
+}
 export async function getFeaturedEvents(_req: Request, res: Response) {
   try {
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");

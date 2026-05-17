@@ -235,7 +235,13 @@ async function getAllDiscoveredEvents(req, res) {
         console.error("SIMPLE EVENTS TEST ERROR FULL:", error);
         return res.status(500).json({
             error: "Simple events test failed",
-            dbUrlHost: process.env.DATABASE_URL?.split("@")[1]?.split("/")[0],
+            databaseUrlExists: !!process.env.DATABASE_URL,
+            databaseUrlPreview: process.env.DATABASE_URL
+                ? process.env.DATABASE_URL.slice(0, 35)
+                : null,
+            databaseUrlHost: process.env.DATABASE_URL
+                ? new URL(process.env.DATABASE_URL).host
+                : null,
             errorName: error?.name,
             errorMessage: error?.message,
             errorCode: error?.code,
