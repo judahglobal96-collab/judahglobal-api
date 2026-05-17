@@ -3,6 +3,11 @@ import { Pool } from "pg";
 export const db = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Add connection timeout and retry logic
+
+  ssl: {
+    rejectUnauthorized: false,
+  },
+  
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 20,
