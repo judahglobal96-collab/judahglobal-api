@@ -3,12 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
 require("./config/db");
+const db_1 = require("./config/db");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const path_1 = __importDefault(require("path"));
+const util_1 = require("util");
+const dns_1 = require("dns");
+const dnsLookup = (0, util_1.promisify)(dns_1.lookup);
 const eventPayments_routes_1 = __importDefault(require("./modules/eventPayments/eventPayments.routes"));
 const webhook_controller_1 = require("./modules/payments/webhook.controller");
 const eventSubmission_routes_1 = __importDefault(require("./routes/eventSubmission.routes"));
@@ -33,14 +35,59 @@ const userNotificationCron_1 = require("./jobs/userNotificationCron");
 const userNotification_routes_1 = __importDefault(require("./routes/userNotification.routes"));
 const promotionSync_routes_1 = __importDefault(require("./routes/promotionSync.routes"));
 const app = (0, express_1.default)();
+app.get("/db-health", async (_req, res) => {
+    try {
+        const dbUrl = process.env.DATABASE_URL;
+        console.log("=== /db-health ENDPOINT ===");
+        console.log("DATABASE_URL exists:", !!dbUrl);
+        console.log("DATABASE_URL:", dbUrl);
+        if (dbUrl) {
+            const url = new URL(dbUrl);
+            const hostname = url.hostname;
+            console.log("Hostname from URL:", hostname);
+            try {
+                const result = await dnsLookup(hostname);
+                console.log("DNS lookup result:", result);
+            }
+            catch (dnsErr) {
+                console.error("DNS lookup failed:", dnsErr.message);
+            }
+        }
+        const result = await db_1.db.query("SELECT NOW() as now");
+        res.json({
+            success: true,
+            databaseUrlExists: !!dbUrl,
+            databaseHost: dbUrl?.split("@")[1]?.split("/")[0],
+            dbTime: result.rows[0].now,
+        });
+    }
+    catch (error) {
+        const dbUrl = process.env.DATABASE_URL;
+        console.error("=== /db-health ERROR ===");
+        console.error("DATABASE_URL exists:", !!dbUrl);
+        console.error("DATABASE_URL:", dbUrl);
+        console.error("Error code:", error?.code);
+        console.error("Error message:", error?.message);
+        console.error("Error address:", error?.address);
+        console.error("Error port:", error?.port);
+        res.status(500).json({
+            success: false,
+            databaseUrlExists: !!dbUrl,
+            databaseHost: dbUrl?.split("@")[1]?.split("/")[0],
+            code: error?.code,
+            message: error?.message,
+            address: error?.address,
+            port: error?.port,
+        });
+    }
+});
 app.use((0, cors_1.default)({
-    origin: process.env.CORS_ORIGIN?.split(",") || [
-    "http://localhost:5173",
-    "https://judah-global-frontend-production.up.railway.app"
-],
+    origin: [
+        "http://localhost:5173",
+        "https://judah-global-frontend-production.up.railway.app"
+    ],
     credentials: true,
 }));
-
 /**
  * Stripe webhook FIRST (raw body required)
  * Must be before express.json()
