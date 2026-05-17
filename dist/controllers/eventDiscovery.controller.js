@@ -216,6 +216,7 @@ async function getPromoPlacementsByTypes(placementTypes, limit, region) {
 }
 async function getAllDiscoveredEvents(req, res) {
     try {
+        console.log("EVENTS ROUTE DB URL:", process.env.DATABASE_URL);
         const result = await db_1.db.query(`
       SELECT
         event_id,
@@ -231,13 +232,19 @@ async function getAllDiscoveredEvents(req, res) {
         });
     }
     catch (error) {
-        console.error("SIMPLE EVENTS TEST ERROR:", error);
+        console.error("SIMPLE EVENTS TEST ERROR FULL:", error);
         return res.status(500).json({
             error: "Simple events test failed",
-            message: error?.message,
-            code: error?.code,
-            detail: error?.detail,
-            stack: error?.stack,
+            dbUrlHost: process.env.DATABASE_URL?.split("@")[1]?.split("/")[0],
+            errorName: error?.name,
+            errorMessage: error?.message,
+            errorCode: error?.code,
+            errors: error?.errors?.map((e) => ({
+                code: e?.code,
+                message: e?.message,
+                address: e?.address,
+                port: e?.port,
+            })),
         });
     }
 }
