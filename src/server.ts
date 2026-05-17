@@ -12,6 +12,16 @@ console.log("PGPORT:", process.env.PGPORT);
 console.log("PGDATABASE:", process.env.PGDATABASE);
 console.log("====================");
 
-app.listen(PORT, () => {
-  console.log(`Judah Global API running on port ${PORT}`);
-});
+try {
+  const server = app.listen(PORT, () => {
+    console.log(`Judah Global API running on port ${PORT}`);
+  });
+
+  server.on("error", (err) => {
+    console.error("Server error:", err);
+    process.exit(1);
+  });
+} catch (err) {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+}
