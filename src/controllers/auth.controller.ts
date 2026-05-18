@@ -122,7 +122,21 @@ export async function loginPlatformUser(req: Request, res: Response) {
       });
     }
 
-    const user = await findPlatformUserByEmail(email);
+    console.log('[PLATFORM LOGIN] Attempting login for email:', email);
+
+    let user;
+    try {
+      user = await findPlatformUserByEmail(email);
+      console.log('[PLATFORM LOGIN] DB query completed. User found:', !!user);
+    } catch (dbError) {
+      const err = dbError as Error;
+      console.error('[PLATFORM LOGIN] DB query failed:', {
+        message: err.message,
+        stack: err.stack,
+        email,
+      });
+      throw dbError;
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -155,7 +169,13 @@ export async function loginPlatformUser(req: Request, res: Response) {
       email: user.email,
     });
   } catch (error) {
-    console.error('loginPlatformUser error:', error);
+    const err = error as Error;
+    console.error('[PLATFORM LOGIN] loginPlatformUser error:', {
+      message: err.message,
+      stack: err.stack,
+      name: err.name,
+      email: req.body?.email,
+    });
     return res.status(500).json({
       message: 'Login failed.',
     });
