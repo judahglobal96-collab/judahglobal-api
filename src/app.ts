@@ -52,6 +52,22 @@ app.use((req, _res, next) => {
 });
 // ────────────────────────────────────────────────────────────────────────────
 
+const allowedOrigins = [
+  "https://judah-global-frontend-production.up.railway.app",
+  "http://localhost:3000",
+  "http://localhost:5173"
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
+app.options("*", cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
 app.get("/env-check", (_req, res) => {
   res.json({
     databaseUrlExists: !!process.env.DATABASE_URL,
