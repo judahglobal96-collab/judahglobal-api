@@ -35,6 +35,19 @@ const userNotificationCron_1 = require("./jobs/userNotificationCron");
 const userNotification_routes_1 = __importDefault(require("./routes/userNotification.routes"));
 const promotionSync_routes_1 = __importDefault(require("./routes/promotionSync.routes"));
 const app = (0, express_1.default)();
+const allowedOrigins = [
+    "https://judah-global-frontend-production.up.railway.app",
+    "http://localhost:3000",
+    "http://localhost:5173"
+];
+app.use((0, cors_1.default)({
+    origin: allowedOrigins,
+    credentials: true
+}));
+app.options("*", (0, cors_1.default)({
+    origin: allowedOrigins,
+    credentials: true
+}));
 app.get("/env-check", (_req, res) => {
     res.json({
         databaseUrlExists: !!process.env.DATABASE_URL,
