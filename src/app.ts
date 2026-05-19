@@ -53,6 +53,8 @@ app.use((req, _res, next) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 const allowedOrigins = [
+  "https://www.judahglobal.org",
+  "https://judahglobal.org",
   "https://judah-global-frontend-production.up.railway.app",
   "http://localhost:3000",
   "http://localhost:5173"
