@@ -34,24 +34,6 @@ import promotionSyncRoutes from "./routes/promotionSync.routes";
 
 const app = express();
 
-// ── Global request logger ────────────────────────────────────────────────────
-// Runs before every other middleware so we can see every inbound request,
-// confirm it reaches the auth routes, and surface any synchronous throw that
-// would otherwise produce a silent 500.
-app.use((req, _res, next) => {
-  console.log(`[REQUEST] ${req.method} ${req.path}`, {
-    body: req.body,
-    contentType: req.headers['content-type'],
-  });
-
-  if (req.path.startsWith('/api/v1/auth')) {
-    console.log(`[AUTH ROUTE HIT] ${req.method} ${req.path}`);
-  }
-
-  next();
-});
-// ────────────────────────────────────────────────────────────────────────────
-
 app.get("/env-check", (_req, res) => {
   res.json({
     databaseUrlExists: !!process.env.DATABASE_URL,
@@ -163,30 +145,15 @@ app.use("/api/v1/event-engagement", eventEngagementRoutes);
 app.use("/api/v1/user-notifications", userNotificationRoutes);
 app.use("/api/v1/promotion-sync", promotionSyncRoutes);
 
-// ── Global error handler ─────────────────────────────────────────────────────
-// Must be registered AFTER all routes. Express identifies error-handling
-// middleware by its four-argument signature (err, req, res, next).
-// Any unhandled throw — including ones from middleware earlier in the chain —
-// will land here so we can log the full stack and return a clean 500.
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error('[GLOBAL ERROR HANDLER]', {
-    method: req.method,
-    path: req.path,
-    message: err?.message,
-    name: err?.name,
-    stack: err?.stack,
-    body: req.body,
-  });
+// Global error handler — must be registered after all routes.
+app.use((err: any, _req: any, res: any, next: any) => {
+  console.error('[ERROR]', err?.message ?? err);
 
   if (res.headersSent) {
     return next(err);
   }
 
-  res.status(500).json({
-    message: 'Internal server error.',
-    error: err?.message,
-  });
+  res.status(500).json({ message: 'Internal server error.' });
 });
-// ────────────────────────────────────────────────────────────────────────────
 
 export default app;
