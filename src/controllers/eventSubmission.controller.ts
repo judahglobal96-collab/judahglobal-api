@@ -74,7 +74,7 @@ export const createDraftEvent = async (
         submitter_email,
         submitter_name,
         submitter_phone,
-        owner_user_id,
+        owner_user_id || null,
         org_uuid,
         status
       )
