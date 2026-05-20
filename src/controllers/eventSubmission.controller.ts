@@ -60,7 +60,7 @@ export const createDraftEvent = async (
 
     if (!isValidEventType(event_type)) {
       return res.status(400).json({
-        error: "Invalid event type",
+        error: "Invalid event type",  
       });
     }
 
