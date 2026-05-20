@@ -126,7 +126,21 @@ async function loginPlatformUser(req, res) {
                 message: 'Email and password are required.',
             });
         }
-        const user = await (0, platform_user_model_1.findPlatformUserByEmail)(email);
+        console.log('[PLATFORM LOGIN] Attempting login for email:', email);
+        let user;
+        try {
+            user = await (0, platform_user_model_1.findPlatformUserByEmail)(email);
+            console.log('[PLATFORM LOGIN] DB query completed. User found:', !!user);
+        }
+        catch (dbError) {
+            const err = dbError;
+            console.error('[PLATFORM LOGIN] DB query failed:', {
+                message: err.message,
+                stack: err.stack,
+                email,
+            });
+            throw dbError;
+        }
         if (!user) {
             return res.status(401).json({
                 message: 'Invalid email or password.',
@@ -153,7 +167,13 @@ async function loginPlatformUser(req, res) {
         });
     }
     catch (error) {
-        console.error('loginPlatformUser error:', error);
+        const err = error;
+        console.error('[PLATFORM LOGIN] loginPlatformUser error:', {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            email: req.body?.email,
+        });
         return res.status(500).json({
             message: 'Login failed.',
         });

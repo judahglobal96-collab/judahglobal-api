@@ -35,7 +35,24 @@ const userNotificationCron_1 = require("./jobs/userNotificationCron");
 const userNotification_routes_1 = __importDefault(require("./routes/userNotification.routes"));
 const promotionSync_routes_1 = __importDefault(require("./routes/promotionSync.routes"));
 const app = (0, express_1.default)();
+// ── Global request logger ────────────────────────────────────────────────────
+// Runs before every other middleware so we can see every inbound request,
+// confirm it reaches the auth routes, and surface any synchronous throw that
+// would otherwise produce a silent 500.
+app.use((req, _res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.path}`, {
+        body: req.body,
+        contentType: req.headers['content-type'],
+    });
+    if (req.path.startsWith('/api/v1/auth')) {
+        console.log(`[AUTH ROUTE HIT] ${req.method} ${req.path}`);
+    }
+    next();
+});
+// ────────────────────────────────────────────────────────────────────────────
 const allowedOrigins = [
+    "https://www.judahglobal.org",
+    "https://judahglobal.org",
     "https://judah-global-frontend-production.up.railway.app",
     "http://localhost:3000",
     "http://localhost:5173"
@@ -143,4 +160,27 @@ app.use("/api/v1/public/placements", placementPublic_routes_1.default);
 app.use("/api/v1/event-engagement", eventEngagement_routes_1.default);
 app.use("/api/v1/user-notifications", userNotification_routes_1.default);
 app.use("/api/v1/promotion-sync", promotionSync_routes_1.default);
+// ── Global error handler ─────────────────────────────────────────────────────
+// Must be registered AFTER all routes. Express identifies error-handling
+// middleware by its four-argument signature (err, req, res, next).
+// Any unhandled throw — including ones from middleware earlier in the chain —
+// will land here so we can log the full stack and return a clean 500.
+app.use((err, req, res, next) => {
+    console.error('[GLOBAL ERROR HANDLER]', {
+        method: req.method,
+        path: req.path,
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+        body: req.body,
+    });
+    if (res.headersSent) {
+        return next(err);
+    }
+    res.status(500).json({
+        message: 'Internal server error.',
+        error: err?.message,
+    });
+});
+// ────────────────────────────────────────────────────────────────────────────
 exports.default = app;

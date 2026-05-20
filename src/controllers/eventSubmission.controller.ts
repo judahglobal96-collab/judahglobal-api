@@ -100,12 +100,17 @@ export const createDraftEvent = async (
       org_uuid: orgUuid,
       message: "Draft event created",
     });
-  } catch (error) {
-    console.error("createDraftEvent error:", error);
-    return res.status(500).json({
-      error: "Failed to create event draft",
-    });
-  }
+  } 
+    catch (error: any) {
+      console.error("createDraftEvent error:", error);
+
+      return res.status(500).json({
+        error: "Failed to create event draft",
+        detail: error?.message,
+        code: error?.code,
+        constraint: error?.constraint,
+      });
+    }
 };
 
 export async function submitEventForVerification(
