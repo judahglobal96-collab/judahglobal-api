@@ -74,7 +74,7 @@ export const createDraftEvent = async (
         submitter_email,
         submitter_name,
         submitter_phone,
-        owner_user_id || null,
+        owner_user_id,
         org_uuid,
         status
       )
@@ -88,7 +88,7 @@ export const createDraftEvent = async (
         submitter_email,
         submitter_name ?? null,
         submitter_phone ?? null,
-        ownerUserId,
+        ownerUserId || null,
         orgUuid,
       ]
     );
