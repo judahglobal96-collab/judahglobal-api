@@ -189,11 +189,10 @@ export async function submitEventForReview(req: Request, res: Response) {
       UPDATE event_submissions
       SET
         org_uuid = $2,
-        owner_user_id = COALESCE($3::uuid, owner_user_id),
         updated_at = NOW()
       WHERE id = $1
       `,
-      [event_id, orgUuid, ownerUserId]
+      [event_id, orgUuid]
     );
 
     const existingVerification = await db.query(
