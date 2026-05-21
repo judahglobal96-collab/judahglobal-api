@@ -37,7 +37,7 @@ router.post("/resend-email-otp", resendEmailOtp);
 
 router.post(
   "/:eventId/media",
-  upload.single("file"),
+  upload.single("media"),
   uploadEventMedia
 );
 export default router;

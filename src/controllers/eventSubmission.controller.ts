@@ -388,8 +388,7 @@ export const uploadEventMedia = async (
     }
 
     // multer puts uploaded file here
-    const file = (req as any).file;
-
+    const file = (req as any).file || (req as any).files?.[0];
     if (!file) {
       return res.status(400).json({
         error: "No media file uploaded",
@@ -422,6 +421,7 @@ export const uploadEventMedia = async (
     return res.status(201).json({
       success: true,
       message: "Media uploaded successfully",
+      url: mediaUrl,
       media_url: mediaUrl,
     });
   } catch (error: any) {
