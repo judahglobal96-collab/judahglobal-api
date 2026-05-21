@@ -36,7 +36,7 @@ router.post("/verify-email-otp", verifyEmailOtp);
 router.post("/resend-email-otp", resendEmailOtp);
 
 router.post(
-  "/events/:eventId/media",
+  "/:eventId/media",
   upload.single("file"),
   uploadEventMedia
 );
