@@ -405,7 +405,7 @@ export const uploadEventMedia = async (
         id,
         event_id,
         media_type,
-        media_url,
+        file_url,
         created_at
       )
       VALUES ($1, $2, $3, $4, NOW())
