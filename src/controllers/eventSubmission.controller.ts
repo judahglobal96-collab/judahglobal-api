@@ -374,3 +374,62 @@ export async function resendEmailOtp(
     });
   }
 }
+export const uploadEventMedia = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const { eventId } = req.params;
+
+    if (!eventId) {
+      return res.status(400).json({
+        error: "Missing event ID",
+      });
+    }
+
+    // multer puts uploaded file here
+    const file = (req as any).file;
+
+    if (!file) {
+      return res.status(400).json({
+        error: "No media file uploaded",
+      });
+    }
+
+    // OPTIONAL:
+    // replace with your actual storage URL logic later
+    const mediaUrl = file.path || file.location || file.filename;
+
+    await db.query(
+      `
+      INSERT INTO event_media (
+        id,
+        event_id,
+        media_type,
+        media_url,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, NOW())
+      `,
+      [
+        uuidv4(),
+        eventId,
+        file.mimetype,
+        mediaUrl,
+      ]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Media uploaded successfully",
+      media_url: mediaUrl,
+    });
+  } catch (error: any) {
+    console.error("uploadEventMedia error:", error);
+
+    return res.status(500).json({
+      error: "Failed to upload media",
+      detail: error?.message,
+    });
+  }
+};

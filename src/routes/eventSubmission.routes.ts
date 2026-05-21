@@ -1,9 +1,11 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   createDraftEvent,
   submitEventForVerification,
   verifyEmailOtp,
   resendEmailOtp,
+  uploadEventMedia,
 } from "../controllers/eventSubmission.controller";
 import { saveEventSchedule } from "../controllers/eventSchedule.controller";
 import { saveEventLocation } from "../controllers/eventLocation.controller";
@@ -12,6 +14,8 @@ import { getEventReview } from "../controllers/eventReview.controller";
 import { requireAuth } from "../middleware/auth.middleware";
 
 const router = Router();
+
+const upload = multer({ dest: "uploads/" });
 
 router.get("/", (_req, res) => {
   res.json({
@@ -31,4 +35,9 @@ router.post("/events/:eventId/submit", submitEventForVerification);
 router.post("/verify-email-otp", verifyEmailOtp);
 router.post("/resend-email-otp", resendEmailOtp);
 
+router.post(
+  "/events/:eventId/media",
+  upload.single("file"),
+  uploadEventMedia
+);
 export default router;
