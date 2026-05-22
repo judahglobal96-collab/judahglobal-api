@@ -1070,7 +1070,9 @@ export async function createCampaignCheckoutSession(campaignId: string) {
       throw new Error("Campaign has no payable line items for checkout.");
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      "https://judah-global-frontend-production.up.railway.app";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
