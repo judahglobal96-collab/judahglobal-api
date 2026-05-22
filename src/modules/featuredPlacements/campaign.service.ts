@@ -990,7 +990,7 @@ export async function createCampaignCheckoutSession(campaignId: string) {
         const weekStartDate = addUtcDays(firstWeekStartDate, weekOffset * 7);
 
       const availabilityRow = await findWeeklyPlacementAvailability(
-        db,
+        client,
         placementType,
         weekStartDate,
         item.region_code
