@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   checkCampaignAvailabilityController,
   getCampaignCalendarAvailabilityController,
@@ -12,6 +13,9 @@ import {
 import { requireAuth } from "../../middleware/auth.middleware";
 
 const router = Router(); 
+
+const upload = multer({ dest: "uploads/" });
+
 
 /**
  * Check live availability for selected campaign items.
@@ -87,6 +91,7 @@ router.post(
 router.post(
   "/promo-media/upload",
   requireAuth,
+  upload.single("promoMedia"),
   uploadCampaignPromoMediaController
 );
 
