@@ -1155,7 +1155,19 @@ export async function uploadCampaignPromoMedia(
       throw new Error("Campaign item for placement type was not found.");
     }
 
-    const fileUrl = resolveFileUrl(input.file);
+    function resolveFileUrl(file: Express.Multer.File) {
+      return (
+        (file as any).location ||
+        (file as any).path ||
+        (file as any).filename ||
+        file.originalname ||
+        null
+      );
+    }
+    if (!input.file) {
+  throw new Error("Promo media file is required.");
+}
+    const fileUrl = resolveFileUrl(input.file as Express.Multer.File);
 
     if (!fileUrl) {
       throw new Error("Uploaded promo media file URL/path could not be resolved.");
