@@ -83,6 +83,13 @@ router.post(
  * Load promo media moderation/render status for a campaign placement.
  * Can be queried by campaignId + placementType, with optional campaignItemId.
  */
+
+router.post(
+  "/promo-media/upload",
+  requireAuth,
+  uploadCampaignPromoMediaController
+);
+
 router.get(
   "/promo-media/status",
   requireAuth,
