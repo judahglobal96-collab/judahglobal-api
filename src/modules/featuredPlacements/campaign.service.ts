@@ -338,7 +338,7 @@ function resolveFileUrl(file: UploadedPromoMediaFile): string | null {
   if (file.url) return file.url;
 
   if (file.filename) {
-    return `/uploads/campaigns/${file.filename}`;
+    return `/uploads/${file.filename}`;
   }
 
   if (file.path) {
