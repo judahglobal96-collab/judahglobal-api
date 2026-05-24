@@ -31,6 +31,7 @@ import { startUserNotificationCron } from "./jobs/userNotificationCron";
       startUserNotificationCron();
 import userNotificationRoutes from "./routes/userNotification.routes";
 import promotionSyncRoutes from "./routes/promotionSync.routes";
+import campaignMediaRoutes from "./modules/monetization/campaignMedia.routes";
 
 const app = express();
 
@@ -164,18 +165,25 @@ app.use("/api/v1/event-submissions", eventSubmissionRoutes);
 app.use("/api/v1/events", eventSubmissionRoutes);
 app.use("/api/v1/events", eventDiscoveryRoutes);
 app.use("/api/v1/discovery", discoveryRoutes);
-app.use("/api/v1/admin", adminEventsRoutes);
+
 app.get("/api/events/:slug", getPublicEventBySlug);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/v1/admin/media-review", adminMediaReviewRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/admin", adminEventsRoutes);
+
 app.use("/api/v1/org/events", orgEventSubmissionRoutes);
-app.use("/api/v1/account", accountRoutes);
-app.use("/api/v1/payments", paymentsRoutes);
 app.use("/api/v1/org-accounts", orgAccountsRoutes);
 app.use("/api/v1/org", orgRoutes);
+
+app.use("/api/v1/account", accountRoutes);
+
+app.use("/api/v1/payments", paymentsRoutes);
 app.use("/api/v1/campaigns", campaignRoutes);
+app.use("/api/campaign-media", campaignMediaRoutes);
+
+
 app.use("/api/v1/placements", placementHoldRoutes);
 app.use("/api/v1/public/placements", placementPublicRoutes);
 app.use("/api/v1/event-engagement", eventEngagementRoutes);
