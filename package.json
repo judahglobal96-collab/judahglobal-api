@@ -2,10 +2,10 @@
   "name": "judah-global-backend",
   "version": "1.0.0",
   "scripts": {
-  "dev": "tsx watch src/server.ts",
-  "build": "tsc",
-  "start": "node dist/server.js"
- },
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
@@ -30,6 +30,7 @@
     "@types/pg": "^8.18.0",
     "@types/uuid": "^10.0.0",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.9.3"
   }
 }

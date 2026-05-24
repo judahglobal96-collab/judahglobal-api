@@ -1,9 +1,14 @@
 import type { Request, Response } from "express";
 import {
   createPendingCampaignMedia,
+  getPendingCampaignMedia,
+  getApprovedCampaignMedia,
   approveCampaignMediaReplacement,
+  getRejectedCampaignMedia,
   rejectCampaignMediaReplacement,
   getCurrentLiveCampaignMedia,
+  getCampaignMediaHistory,
+  getLiveCampaignMedia,
 } from "./campaignMedia.service";
 
 export async function createCampaignMediaController(
@@ -65,6 +70,68 @@ export async function createCampaignMediaController(
     return res.status(500).json({
       success: false,
       message: error?.message || "Failed to create campaign media.",
+    });
+  }
+}
+export async function getPendingCampaignMediaController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const media = await getPendingCampaignMedia();
+
+    return res.status(200).json({
+      success: true,
+      media,
+    });
+  } catch (error) {
+    console.error("getPendingCampaignMediaController error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+}
+
+export async function getApprovedCampaignMediaController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const media = await getApprovedCampaignMedia();
+
+    return res.status(200).json({
+      success: true,
+      media,
+    });
+  } catch (error) {
+    console.error("getApprovedCampaignMediaController error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+}
+
+export async function getRejectedCampaignMediaController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const media = await getRejectedCampaignMedia();
+
+    return res.status(200).json({
+      success: true,
+      media,
+    });
+  } catch (error) {
+    console.error("getRejectedCampaignMediaController error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
     });
   }
 }
@@ -151,6 +218,56 @@ export async function rejectCampaignMediaController(
     return res.status(500).json({
       success: false,
       message: error?.message || "Failed to reject campaign media.",
+    });
+  }
+}
+    export async function getCampaignMediaHistoryController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const media = await getCampaignMediaHistory({
+      placementType: req.query.placementType
+        ? String(req.query.placementType)
+        : undefined,
+      mediaSlot: req.query.mediaSlot ? String(req.query.mediaSlot) : undefined,
+      eventId: req.query.eventId ? String(req.query.eventId) : undefined,
+      promoPurchaseId: req.query.promoPurchaseId
+        ? String(req.query.promoPurchaseId)
+        : undefined,
+      campaignId: req.query.campaignId ? String(req.query.campaignId) : undefined,
+    });
+
+    return res.status(200).json({
+      success: true,
+      media,
+    });
+  } catch (error) {
+    console.error("getCampaignMediaHistoryController error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+}
+export async function getLiveCampaignMediaController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const media = await getLiveCampaignMedia();
+
+    return res.status(200).json({
+      success: true,
+      media,
+    });
+  } catch (error) {
+    console.error("getLiveCampaignMediaController error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
     });
   }
 }

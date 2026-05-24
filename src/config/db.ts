@@ -4,10 +4,10 @@ export const db = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Add connection timeout and retry logic
 
-  ssl: {
-    rejectUnauthorized: false,
-  },
-  
+ssl: process.env.NODE_ENV === "production"
+  ? { rejectUnauthorized: false }
+  : false,
+    
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 1,
