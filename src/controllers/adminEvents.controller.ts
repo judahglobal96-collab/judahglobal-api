@@ -1094,6 +1094,27 @@ export async function rejectEvent(req: Request, res: Response) {
         rejectionReason,
       },
     });
+await db.query(
+  `
+      UPDATE ad_campaign_items ci
+      SET status = 'rejected'
+      FROM ad_campaigns c
+      WHERE ci.campaign_id = c.id
+        AND c.linked_event_id = $1::uuid
+        AND ci.status IN ('review', 'pending_payment', 'paid')
+      `,
+      [eventId]
+    );
+
+    await db.query(
+      `
+      UPDATE ad_campaigns
+      SET status = 'rejected'
+      WHERE linked_event_id = $1::uuid
+        AND status IN ('review', 'pending_payment', 'paid')
+      `,
+      [eventId]
+    );
 
     return res.json({
       success: true,

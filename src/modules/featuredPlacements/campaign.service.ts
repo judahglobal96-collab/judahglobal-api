@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { db } from "../../config/db";
+import { createPendingCampaignMedia } from "../monetization/campaignMedia.service";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: "2026-02-25.clover",
@@ -1175,63 +1176,36 @@ export async function uploadCampaignPromoMedia(
       throw new Error("Uploaded promo media file URL/path could not be resolved.");
     }
 
-    const insertResult = await client.query(
-      `
-      INSERT INTO campaign_promo_media (
-        campaign_id,
-        campaign_item_id,
-        placement_type,
-        file_name,
-        file_url,
-        mime_type,
-        file_size,
-        moderation_status,
-        is_active,
-        uploaded_by_user_id,
-        uploaded_by_org_uuid,
-        source
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        'pending',
-        false,
-        $8, $9, $10
-      )
-      RETURNING
-        id,
-        campaign_id,
-        campaign_item_id,
-        placement_type,
-        file_name,
-        file_url,
-        mime_type,
-        file_size,
-        moderation_status,
-        is_active,
-        uploaded_by_user_id,
-        uploaded_by_org_uuid,
-        source,
-        rejection_reason,
-        approved_by_user_id,
-        approved_at,
-        created_at,
-        updated_at
-      `,
-      [
-        input.campaignId,
-        campaignItem.id,
-        normalizePlacementType(input.placementType),
-        input.file.originalname || input.file.filename || "promo-media",
-        fileUrl,
-        input.file.mimetype || null,
-        input.file.size || null,
-        input.uploadedByUserId || null,
-        input.uploadedByOrgUuid || null,
-        input.source || null,
-      ]
-    );
+      const mediaResult = await createPendingCampaignMedia({
+        campaignId: input.campaignId,
+        promoPurchaseId: null,
+        eventId: campaign.linked_event_id ?? null,
 
-    await client.query("COMMIT");
+        placementType: normalizePlacementType(input.placementType),
+        mediaSlot: "primary",
+
+        fileUrl,
+        thumbnailUrl: null,
+
+        fileSizeMB:
+          input.file && typeof input.file.size === "number"
+            ? Number((input.file.size / (1024 * 1024)).toFixed(2))
+            : 0,
+
+        mimeType: input.file?.mimetype || "image/jpeg",
+
+        width: 0,
+        height: 0,
+
+        uploadedBy:
+          input.uploadedByUserId ||
+          input.uploadedByOrgUuid ||
+          "system",
+
+        replacesMediaId: null,
+      });
+
+await client.query("COMMIT");
 
     return {
       campaign: {
@@ -1245,7 +1219,7 @@ export async function uploadCampaignPromoMedia(
         placement_date: campaignItem.placement_date,
         status: campaignItem.status,
       },
-      media: insertResult.rows[0],
+      media: mediaResult.media,
     };
   } catch (error) {
     await client.query("ROLLBACK");
