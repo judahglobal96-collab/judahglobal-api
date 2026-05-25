@@ -2,7 +2,14 @@ import type { Request, Response } from "express";
 import { db } from "../config/db";
 
 function buildVenueAddress(row: any) {
-  return [row.address_line1, row.address_line2, row.city, row.state_region, row.postal_code, row.country]
+  return [
+    row.address_line1,
+    row.address_line2,
+    row.city,
+    row.state_region,
+    row.postal_code,
+    row.country,
+  ]
     .filter(Boolean)
     .join(", ");
 }
@@ -74,11 +81,21 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         ofm.file_url AS official_flyer_url
 
       FROM events e
-      LEFT JOIN event_schedules s ON s.event_id = e.id
-      LEFT JOIN event_locations l ON l.event_id = e.id
-      LEFT JOIN event_sponsors sp ON sp.event_id = e.id
-      LEFT JOIN event_email_verifications ev ON ev.event_id = e.id
-      LEFT JOIN event_discovery_index edi ON edi.event_id = e.id
+
+      LEFT JOIN event_schedules s
+        ON s.event_id = e.id
+
+      LEFT JOIN event_locations l
+        ON l.event_id = e.id
+
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.id
+
+      LEFT JOIN event_email_verifications ev
+        ON ev.event_id = e.id
+
+      LEFT JOIN event_discovery_index edi
+        ON edi.event_id = e.id
 
       LEFT JOIN LATERAL (
         SELECT em2.file_url, em2.moderation_status, em2.is_primary
@@ -91,26 +108,29 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
       ) em ON true
 
       LEFT JOIN LATERAL (
-        SELECT pm.file_url
-        FROM campaign_promo_media pm
-        INNER JOIN ad_campaign_items ci ON ci.id = pm.campaign_item_id
-        INNER JOIN ad_campaigns c ON c.id = ci.campaign_id
-        WHERE c.linked_event_id = e.id
-          AND ci.placement_type = 'official_flyer'
-          AND c.status = 'paid'
-          AND ci.status = 'paid'
-          AND pm.moderation_status = 'approved'
-          AND pm.is_active = true
-        ORDER BY pm.updated_at DESC, pm.created_at DESC
+        SELECT cm.file_url
+        FROM campaign_media cm
+        WHERE cm.event_id = e.id
+          AND cm.placement_type = 'official_flyer'
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.created_at DESC
         LIMIT 1
       ) ofm ON true
 
       WHERE e.status = 'approved'
-      AND (
-        e.expires_at IS NULL
-        OR e.expires_at > NOW()
-      )
-        LIMIT 1
+        AND (
+          e.id::text = $1
+          OR e.slug = $1
+          OR e.event_code = $1
+        )
+        AND (
+          e.expires_at IS NULL
+          OR e.expires_at > NOW()
+        )
+      LIMIT 1
       `,
       [slug]
     );
@@ -132,21 +152,26 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         id: event.id,
         slug: event.slug,
         eventCode: event.event_code,
+
         title: event.title,
         shortDescription: event.short_description,
         description: event.description,
         category: event.category,
         status: event.status,
+
         featured: Boolean(event.featured),
         isFeatured: Boolean(event.featured),
 
+        fileUrl: event.media_url || null,
         mediaUrl: event.media_url || null,
         mediaStatus: event.media_status || null,
+
         officialFlyerUrl: event.official_flyer_url || null,
         official_flyer_url: event.official_flyer_url || null,
 
         venueName: event.venue_name || null,
         venueAddress: venueAddress || null,
+
         sponsorName: event.sponsor_name || null,
         contactEmail: event.contact_email || null,
         country: event.country || null,
@@ -197,6 +222,7 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
     });
   } catch (error) {
     console.error("getPublicEventBySlug error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to load event",
