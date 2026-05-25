@@ -18,7 +18,7 @@ const router = Router();
 
 router.get("/events/pending", getPendingEvents);
 router.get("/events/rejected", getRejectedEvents);
-router.get("/approved-events", getApprovedEvents);
+router.get("/events/approved-events", getApprovedEvents);
 router.get("/org/:orgUuid/approved-events", getApprovedEventsByOrgUuid);
 
 router.get("/events/:eventId", getAdminEventById);
