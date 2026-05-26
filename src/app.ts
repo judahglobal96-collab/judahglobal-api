@@ -162,7 +162,6 @@ app.get("/", (_req, res) => {
 
 app.use("/api/v1/event-payments", eventPaymentsRoutes);
 app.use("/api/v1/event-submissions", eventSubmissionRoutes);
-app.use("/api/v1/events", eventSubmissionRoutes);
 app.use("/api/v1/events", eventDiscoveryRoutes);
 app.use("/api/v1/discovery", discoveryRoutes);
 
