@@ -401,6 +401,7 @@ export async function uploadCampaignPromoMediaController(
       source: req.body?.source ? String(req.body.source).trim() : null,
     };
 
+    
     const result = await uploadCampaignPromoMedia(payload);
 
     const uploadedBy =
@@ -416,6 +417,24 @@ export async function uploadCampaignPromoMediaController(
       (file as any).url ||
       (file as any).path ||
       ((file as any).filename ? `/uploads/${(file as any).filename}` : null);
+
+          console.log("CAMPAIGN MEDIA PAYLOAD", {
+      campaignId: String(campaignId).trim(),
+      promoPurchaseId: null,
+      eventId: eventId ? String(eventId).trim() : null,
+      placementType: normalizedPlacementType,
+      mediaSlot: getMediaSlot(normalizedPlacementType),
+      fileUrl,
+      thumbnailUrl: null,
+      fileSizeMB: Number(((file.size || 0) / 1024 / 1024).toFixed(2)),
+      mimeType: file.mimetype || "application/octet-stream",
+      width: Number(req.body?.width || 0),
+      height: Number(req.body?.height || 0),
+      uploadedBy,
+      replacesMediaId: req.body?.replacesMediaId
+        ? String(req.body.replacesMediaId).trim()
+        : null,
+    });
 
     if (!fileUrl) {
       throw new Error("Uploaded media URL could not be resolved.");
