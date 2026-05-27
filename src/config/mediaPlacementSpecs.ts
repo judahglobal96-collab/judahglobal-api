@@ -260,8 +260,8 @@ export function validateMediaAgainstSpec(
   }
 
   if (input.width < spec.minWidth || input.height < spec.minHeight) {
-    errors.push(
-      `Image must be at least ${spec.minWidth} × ${spec.minHeight}px.`
+    warnings.push(
+      `Recommneded minimum ${spec.minWidth} × ${spec.minHeight}px.`
     );
   }
 
