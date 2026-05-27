@@ -1175,7 +1175,7 @@ export async function uploadCampaignPromoMedia(
     if (!fileUrl) {
       throw new Error("Uploaded promo media file URL/path could not be resolved.");
     }
-
+/*
       const mediaResult = await createPendingCampaignMedia({
         campaignId: input.campaignId,
         promoPurchaseId: null,
@@ -1203,7 +1203,7 @@ export async function uploadCampaignPromoMedia(
           "system",
 
         replacesMediaId: null,
-      });
+      });*/
 
 await client.query("COMMIT");
 
@@ -1219,7 +1219,6 @@ await client.query("COMMIT");
         placement_date: campaignItem.placement_date,
         status: campaignItem.status,
       },
-      media: mediaResult.media,
     };
   } catch (error) {
     await client.query("ROLLBACK");

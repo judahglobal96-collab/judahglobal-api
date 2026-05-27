@@ -411,7 +411,7 @@ export async function uploadCampaignPromoMediaController(
       "system";
 
     const fileUrl =
-      result?.media?.fileUrl ||
+      (file as any).location ||
       (file as any).location ||
       (file as any).secure_url ||
       (file as any).url ||
@@ -469,7 +469,7 @@ export async function uploadCampaignPromoMediaController(
     return res.status(201).json({
       message: "Promo media uploaded successfully and is pending review.",
       ...result,
-      campaignMedia: campaignMediaResult.media,
+      campaignMedia: campaignMediaResult,
       campaignMediaWarnings: campaignMediaResult.warnings,
     });
   } catch (error) {
