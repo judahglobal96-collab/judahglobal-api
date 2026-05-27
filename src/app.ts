@@ -32,6 +32,7 @@ import { startUserNotificationCron } from "./jobs/userNotificationCron";
 import userNotificationRoutes from "./routes/userNotification.routes";
 import promotionSyncRoutes from "./routes/promotionSync.routes";
 import campaignMediaRoutes from "./modules/monetization/campaignMedia.routes";
+import uploadEventMediaRoutes from "./modules/featuredPlacements/campaign.routes";
 
 const app = express();
 
@@ -181,7 +182,7 @@ app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/payments", paymentsRoutes);
 app.use("/api/v1/campaigns", campaignRoutes);
 app.use("/api/campaign-media", campaignMediaRoutes);
-
+app.use("/api/v1/events", uploadEventMediaRoutes);
 
 app.use("/api/v1/placements", placementHoldRoutes);
 app.use("/api/v1/public/placements", placementPublicRoutes);

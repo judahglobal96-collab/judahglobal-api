@@ -11,6 +11,7 @@ import {
   getCampaignPaymentSuccessController,
 } from "./campaign.controller";
 import { requireAuth } from "../../middleware/auth.middleware";
+import { uploadEventMedia } from "../../controllers/eventSubmission.controller";
 
 const router = Router(); 
 
@@ -108,6 +109,12 @@ router.get(
 router.get(
   "/payment-success",
   getCampaignPaymentSuccessController
+);
+router.post(
+  "/:eventId/media",
+  requireAuth,
+  upload.single("media"),
+  uploadEventMedia
 );
 
 export default router;
