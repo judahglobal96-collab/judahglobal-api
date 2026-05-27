@@ -67,13 +67,13 @@ function normalizePlacementType(value: PlacementType): string {
 function getMediaSlot(placementType: PlacementType): string {
   const normalized = normalizePlacementType(placementType);
 
-  if (normalized === "official_flyer") return "official_flyer";
+  if (normalized === "official_flyer") return "primary";
   if (normalized === "hero") return "homepage_hero";
   if (normalized === "homepage_top") return "homepage_top_row";
   if (normalized === "discovery_top") return "discovery_top_row";
   if (normalized === "featured_badge") return "featured_badge";
   if (normalized === "major_events") return "major_events";
-
+  
   return "primary";
 }
 
