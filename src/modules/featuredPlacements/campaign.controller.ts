@@ -10,15 +10,20 @@ import {
   getCampaignPaymentSuccessBySessionId,
 } from "./campaign.service";
 
+import { createPendingCampaignMedia } from "../monetization/campaignMedia.service";
+
 type PlacementType =
   | "hero"
+  | "homepage_hero"
   | "homepage_top"
   | "homepage_top_row"
   | "discovery_top"
   | "discovery_top_row"
   | "featured_badge"
   | "major_events"
-  | "official_flyer";
+  | "official_flyer"
+  | "event_fee"
+  | "event_submission_fee";
 
 type IncomingCampaignItem = {
   placementType: PlacementType;
@@ -51,13 +56,33 @@ function isValidPlacementType(value: unknown): value is PlacementType {
   );
 }
 
+function normalizePlacementType(value: PlacementType): string {
+  if (value === "homepage_hero") return "hero";
+  if (value === "homepage_top_row") return "homepage_top";
+  if (value === "discovery_top_row") return "discovery_top";
+  if (value === "event_submission_fee") return "event_fee";
+  return value;
+}
+
+function getMediaSlot(placementType: PlacementType): string {
+  const normalized = normalizePlacementType(placementType);
+
+  if (normalized === "official_flyer") return "official_flyer";
+  if (normalized === "hero") return "homepage_hero";
+  if (normalized === "homepage_top") return "homepage_top_row";
+  if (normalized === "discovery_top") return "discovery_top_row";
+  if (normalized === "featured_badge") return "featured_badge";
+  if (normalized === "major_events") return "major_events";
+
+  return "primary";
+}
+
 function isDurationPlacement(placementType: PlacementType) {
   return placementType === "featured_badge" || placementType === "major_events";
 }
 
 function isValidDateString(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
-
   const parsed = new Date(`${value}T00:00:00`);
   return !Number.isNaN(parsed.getTime());
 }
@@ -103,15 +128,15 @@ function normalizeCampaignItems(items: unknown): ReserveCampaignItemsInput {
       throw new Error(`Item ${index + 1}: durationDays must be at least 1.`);
     }
 
-  return {
-    placementType: item.placementType,
-    placementDate: item.startDate,
-    slotNumber: null,
-    quantity,
-    durationDays,
-    regionCode: item.regionCode || null,
-  };
-});
+    return {
+      placementType: normalizePlacementType(item.placementType) as any,
+      placementDate: item.startDate,
+      slotNumber: null,
+      quantity,
+      durationDays,
+      regionCode: item.regionCode || null,
+    };
+  });
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -137,7 +162,10 @@ export async function checkCampaignAvailabilityController(
   res: Response
 ) {
   try {
-    const items: CheckAvailabilityItemsInput = normalizeCampaignItems(req.body?.items);
+    const items: CheckAvailabilityItemsInput = normalizeCampaignItems(
+      req.body?.items
+    );
+
     const results = await checkCampaignAvailability(items);
 
     return res.status(200).json({
@@ -184,7 +212,7 @@ export async function getCampaignCalendarAvailabilityController(
     }
 
     const payload: CalendarAvailabilityInput = {
-      placementType,
+      placementType: normalizePlacementType(placementType) as any,
       startDate,
       weeks: normalizedWeeks,
       regionCode: req.body.regionCode || req.body.region || "USA",
@@ -209,10 +237,7 @@ export async function getCampaignCalendarAvailabilityController(
   }
 }
 
-export async function continueToReviewController(
-  req: Request,
-  res: Response
-) {
+export async function continueToReviewController(req: Request, res: Response) {
   try {
     const {
       campaignName,
@@ -243,7 +268,9 @@ export async function continueToReviewController(
       });
     }
 
-    const items: ReserveCampaignItemsInput = normalizeCampaignItems(req.body?.items);
+    const items: ReserveCampaignItemsInput = normalizeCampaignItems(
+      req.body?.items
+    );
 
     const payload: ReserveCampaignInput = {
       campaignName: String(campaignName).trim(),
@@ -314,7 +341,9 @@ export async function createCampaignCheckoutSessionController(
       });
     }
 
-    const result = await createCampaignCheckoutSession(String(campaignId).trim());
+    const result = await createCampaignCheckoutSession(
+      String(campaignId).trim()
+    );
 
     return res.status(200).json(result);
   } catch (error) {
@@ -334,7 +363,7 @@ export async function uploadCampaignPromoMediaController(
   res: Response
 ) {
   try {
-    const { campaignId, placementType, campaignItemId } = req.body;
+    const { campaignId, placementType, campaignItemId, eventId } = req.body;
 
     if (!campaignId || !String(campaignId).trim()) {
       return res.status(400).json({
@@ -349,30 +378,80 @@ export async function uploadCampaignPromoMediaController(
     }
 
     const file = getUploadedFile(req);
-      console.log("PROMO MEDIA FILE OBJECT", file);
-      
+
     if (!file) {
       return res.status(400).json({
         message: "Promo media file is required.",
       });
     }
-      console.log("PROMO MEDIA BODY", req.body);
+
+    const normalizedPlacementType = normalizePlacementType(
+      placementType
+    ) as PlacementType;
 
     const payload: UploadCampaignPromoMediaInput = {
       campaignId: String(campaignId).trim(),
       campaignItemId: campaignItemId ? String(campaignItemId).trim() : null,
-      placementType,
+      placementType: normalizedPlacementType as any,
       file,
       uploadedByUserId: (req as any)?.user?.id || null,
-      uploadedByOrgUuid: req.body?.orgUuid ? String(req.body.orgUuid).trim() : null,
+      uploadedByOrgUuid: req.body?.orgUuid
+        ? String(req.body.orgUuid).trim()
+        : null,
       source: req.body?.source ? String(req.body.source).trim() : null,
     };
 
     const result = await uploadCampaignPromoMedia(payload);
 
+    const uploadedBy =
+      (req as any)?.user?.id ||
+      req.body?.uploadedBy ||
+      req.body?.userId ||
+      "system";
+
+    const fileUrl =
+      result?.media?.fileUrl ||
+      (file as any).location ||
+      (file as any).secure_url ||
+      (file as any).url ||
+      (file as any).path ||
+      ((file as any).filename ? `/uploads/${(file as any).filename}` : null);
+
+    if (!fileUrl) {
+      throw new Error("Uploaded media URL could not be resolved.");
+    }
+
+    const campaignMediaResult = await createPendingCampaignMedia({
+      campaignId: String(campaignId).trim(),
+      promoPurchaseId: null,
+      eventId: eventId ? String(eventId).trim() : null,
+      placementType: normalizedPlacementType,
+      mediaSlot: getMediaSlot(normalizedPlacementType),
+      fileUrl,
+      thumbnailUrl: null,
+      fileSizeMB: Number(((file.size || 0) / 1024 / 1024).toFixed(2)),
+      mimeType: file.mimetype || "application/octet-stream",
+      width: Number(req.body?.width || 0),
+      height: Number(req.body?.height || 0),
+      uploadedBy,
+      replacesMediaId: req.body?.replacesMediaId
+        ? String(req.body.replacesMediaId).trim()
+        : null,
+    });
+
+    if (!campaignMediaResult.success) {
+      return res.status(400).json({
+        message: "Promo media uploaded, but campaign media registration failed.",
+        promoMedia: result,
+        campaignMedia: campaignMediaResult,
+      });
+    }
+
     return res.status(201).json({
       message: "Promo media uploaded successfully and is pending review.",
       ...result,
+      campaignMedia: campaignMediaResult.media,
+      campaignMediaWarnings: campaignMediaResult.warnings,
     });
   } catch (error) {
     console.error("uploadCampaignPromoMediaController error:", error);
@@ -395,8 +474,15 @@ export async function getCampaignPromoMediaStatusController(
       req.params?.campaignId || req.query?.campaignId || req.body?.campaignId || ""
     ).trim();
 
-    const placementType = req.params?.placementType || req.query?.placementType || req.body?.placementType;
-    const campaignItemId = req.params?.campaignItemId || req.query?.campaignItemId || req.body?.campaignItemId;
+    const placementType =
+      req.params?.placementType ||
+      req.query?.placementType ||
+      req.body?.placementType;
+
+    const campaignItemId =
+      req.params?.campaignItemId ||
+      req.query?.campaignItemId ||
+      req.body?.campaignItemId;
 
     if (!campaignId) {
       return res.status(400).json({
@@ -412,7 +498,7 @@ export async function getCampaignPromoMediaStatusController(
 
     const payload: GetCampaignPromoMediaStatusInput = {
       campaignId,
-      placementType,
+      placementType: normalizePlacementType(placementType) as any,
       campaignItemId: campaignItemId ? String(campaignItemId).trim() : null,
       requestedByUserId: (req as any)?.user?.id || null,
     };
@@ -465,4 +551,5 @@ export async function getCampaignPaymentSuccessController(
     });
   }
 }
+
 export const reserveCampaignController = continueToReviewController;
