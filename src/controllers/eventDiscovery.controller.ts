@@ -19,9 +19,7 @@ function parsePositiveInt(value: unknown, fallback: number): number {
 }
 
 function getSearchTerm(req: Request): string {
-  return String(
-    req.query.search || req.query.q || req.query.keyword || ""
-  ).trim();
+  return String(req.query.search || req.query.q || req.query.keyword || "").trim();
 }
 
 function getFilterValue(value: unknown): string {
@@ -29,11 +27,30 @@ function getFilterValue(value: unknown): string {
 }
 
 function getBooleanQueryParam(value: unknown): boolean {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-
+  const normalized = String(value || "").trim().toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "yes";
+}
+
+function buildActiveEventSql(alias = "e") {
+  return `
+    ${alias}.starts_at_utc IS NOT NULL
+    AND ${alias}.ends_at_utc IS NOT NULL
+    AND ${alias}.ends_at_utc > NOW()
+  `;
+}
+
+function buildSubmissionNotExpiredSql(eventIdReference = "e.event_id") {
+  return `
+    EXISTS (
+      SELECT 1
+      FROM event_submissions es
+      WHERE es.id = ${eventIdReference}
+        AND (
+          es.expires_at IS NULL
+          OR es.expires_at > NOW()
+        )
+    )
+  `;
 }
 
 function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
@@ -56,47 +73,36 @@ function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
   `;
 }
 
-    function buildMajorEventExistsSql(eventIdReference = "e.event_id") {
-      return `
-      EXISTS (
-        SELECT 1
-        FROM event_promotions ep
-        WHERE ep.event_id = ${eventIdReference}
-          AND ep.placement_type = 'major_event'
-          AND ep.status = 'active'
-          AND ep.expires_at > NOW()
-      )
-    `;
-  }
+function buildMajorEventExistsSql(eventIdReference = "e.event_id") {
+  return `
+    EXISTS (
+      SELECT 1
+      FROM event_promotions ep
+      WHERE ep.event_id = ${eventIdReference}
+        AND ep.placement_type = 'major_event'
+        AND ep.status = 'active'
+        AND ep.expires_at > NOW()
+    )
+  `;
+}
 
 function buildDiscoveryFilters(req: Request, useDefaultCountry = true) {
   const search = getSearchTerm(req);
   const city = getFilterValue(req.query.city);
   const stateRegion = getFilterValue(req.query.state_region);
   const country =
-  getFilterValue(req.query.country) || (useDefaultCountry ? "United States" : "");
+    getFilterValue(req.query.country) || (useDefaultCountry ? "United States" : "");
   const category = getFilterValue(req.query.category);
   const majorEventOnly = getBooleanQueryParam(req.query.major_event);
 
   const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
 
   const whereParts: string[] = [
-      `e.status = 'approved'`,
-      `(
-        e.ends_at_utc IS NULL
-        OR e.ends_at_utc > NOW()
-      )`,
-      `EXISTS (
-        SELECT 1
-        FROM event_submissions es
-        WHERE es.id = e.event_id
-        AND (
-          es.expires_at IS NULL
-          OR es.expires_at > NOW()
-        )
-      )`,
-    ];
-    
+    `e.status = 'approved'`,
+    `(${buildActiveEventSql("e")})`,
+    `(${buildSubmissionNotExpiredSql("e.event_id")})`,
+  ];
+
   const params: Array<string | number> = [];
   let paramIndex = 1;
 
@@ -208,25 +214,23 @@ async function getPromoPlacementsByTypes(
       ON c.id = ci.campaign_id
     INNER JOIN campaign_promo_media pm
       ON pm.campaign_item_id = ci.id
-     AND pm.moderation_status = 'approved'
-     AND pm.is_active = true
+      AND pm.moderation_status = 'approved'
+      AND pm.is_active = true
     INNER JOIN event_discovery_index e
       ON e.event_id = c.linked_event_id
-     AND e.status = 'approved'
-      AND (
-        e.ends_at_utc IS NULL
-        OR e.ends_at_utc > NOW()
-      )
+      AND e.status = 'approved'
+      AND ${buildActiveEventSql("e")}
     LEFT JOIN event_sponsors sp
       ON sp.event_id = e.event_id
     WHERE ci.placement_type = ANY($1::text[])
       AND c.status = 'paid'
       AND ci.status = 'paid'
+      AND (${buildSubmissionNotExpiredSql("e.event_id")})
       AND (
-      $3::text IS NULL
-      OR e.country ILIKE $3::text
-    )
-          AND CURRENT_DATE BETWEEN
+        $3::text IS NULL
+        OR e.country ILIKE $3::text
+      )
+      AND CURRENT_DATE BETWEEN
         (ci.placement_date AT TIME ZONE 'UTC')::date
         AND (
           (ci.placement_date AT TIME ZONE 'UTC')::date +
@@ -238,7 +242,7 @@ async function getPromoPlacementsByTypes(
       e.starts_at_utc ASC
     LIMIT $2
     `,
-    [placementTypes, limit, region ? `%${region}%` : null] 
+    [placementTypes, limit, region ? `%${region}%` : null]
   );
 
   return result.rows;
@@ -255,6 +259,8 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
         city,
         starts_at_utc
       FROM event_discovery_index
+      WHERE status = 'approved'
+        AND ${buildActiveEventSql("event_discovery_index")}
       LIMIT 5
     `);
 
@@ -262,7 +268,6 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
       success: true,
       results: result.rows,
     });
-
   } catch (error: any) {
     console.error("SIMPLE EVENTS TEST ERROR FULL:", error);
 
@@ -287,6 +292,7 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
     });
   }
 }
+
 export async function getFeaturedEvents(_req: Request, res: Response) {
   try {
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
@@ -313,11 +319,9 @@ export async function getFeaturedEvents(_req: Request, res: Response) {
       LEFT JOIN event_sponsors sp
         ON sp.event_id = e.event_id
       WHERE e.status = 'approved'
-      AND (
-        e.expires_at IS NULL
-        OR e.expires_at > NOW()
-      )
-          AND (COALESCE(e.is_featured, false) = true OR ${featuredBadgeExistsSql})
+        AND ${buildActiveEventSql("e")}
+        AND (${buildSubmissionNotExpiredSql("e.event_id")})
+        AND (COALESCE(e.is_featured, false) = true OR ${featuredBadgeExistsSql})
       ORDER BY e.starts_at_utc ASC
       `
     );
@@ -345,10 +349,7 @@ export async function getHomepageHeroPlacement(_req: Request, res: Response) {
   }
 }
 
-export async function getHomepageTopRowPlacements(
-  req: Request,
-  res: Response
-) {
+export async function getHomepageTopRowPlacements(req: Request, res: Response) {
   try {
     const region = String(req.query.region || "").trim();
 
@@ -370,10 +371,7 @@ export async function getHomepageTopRowPlacements(
   }
 }
 
-export async function getDiscoveryTopRowPlacements(
-  req: Request,
-  res: Response
-) {
+export async function getDiscoveryTopRowPlacements(req: Request, res: Response) {
   try {
     const region = String(req.query.region || "").trim();
 
@@ -395,8 +393,8 @@ export async function getDiscoveryTopRowPlacements(
   }
 }
 
-    export const getHomepagePromos = async (req: Request, res: Response) => {
-      try {
+export const getHomepagePromos = async (req: Request, res: Response) => {
+  try {
     const region = String(req.query.region || "").trim();
 
     const hero = await getPromoPlacementsByTypes(["hero"], 2, region);
@@ -422,7 +420,6 @@ export async function getMajorEvents(req: Request, res: Response) {
     const page = parsePositiveInt(req.query.page, 1);
     const limit = parsePositiveInt(req.query.limit, 12);
     const offset = (page - 1) * limit;
-
     const region = String(req.query.region || "").trim();
     const regionParam = region ? `%${region}%` : null;
 
@@ -431,24 +428,21 @@ export async function getMajorEvents(req: Request, res: Response) {
       FROM event_promotions ep
       INNER JOIN event_discovery_index e
         ON e.event_id = ep.event_id
-       AND e.status = 'approved'
-       AND (
-          e.ends_at_utc IS NULL
-          OR e.ends_at_utc > NOW()
-      )
+        AND e.status = 'approved'
+        AND ${buildActiveEventSql("e")}
       WHERE ep.placement_type = 'major_event'
         AND ep.status = 'active'
         AND ep.expires_at > NOW()
+        AND (${buildSubmissionNotExpiredSql("e.event_id")})
         AND (
           $1::text IS NULL
           OR e.country ILIKE $1::text
         )
-   `;
+    `;
 
     const countResult = await db.query(countQuery, [regionParam]);
     const total = countResult.rows[0]?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
-
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
 
     const result = await db.query(
@@ -463,11 +457,8 @@ export async function getMajorEvents(req: Request, res: Response) {
       FROM event_promotions ep
       INNER JOIN event_discovery_index e
         ON e.event_id = ep.event_id
-       AND e.status = 'approved'
-      AND (
-        e.ends_at_utc IS NULL
-        OR e.ends_at_utc > NOW()
-      )
+        AND e.status = 'approved'
+        AND ${buildActiveEventSql("e")}
       LEFT JOIN LATERAL (
         SELECT em.file_url
         FROM event_media em
@@ -479,14 +470,15 @@ export async function getMajorEvents(req: Request, res: Response) {
       ) media ON true
       LEFT JOIN event_sponsors sp
         ON sp.event_id = e.event_id
-        WHERE ep.placement_type = 'major_event'
-          AND ep.status = 'active'
-          AND ep.expires_at > NOW()
-          AND (
-            $3::text IS NULL
-            OR e.country ILIKE $3::text
+      WHERE ep.placement_type = 'major_event'
+        AND ep.status = 'active'
+        AND ep.expires_at > NOW()
+        AND (${buildSubmissionNotExpiredSql("e.event_id")})
+        AND (
+          $3::text IS NULL
+          OR e.country ILIKE $3::text
         )
-          ORDER BY
+      ORDER BY
         e.event_id,
         ep.expires_at DESC,
         e.starts_at_utc ASC
@@ -593,7 +585,7 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
           isMajorEventExpression: `(${majorEventExistsSql})`,
           isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })},
-        sp.contact_email, 
+        sp.contact_email,
         loc.venue_name,
         loc.address_line_1 AS address_line_1,
         loc.city AS location_city,
@@ -630,6 +622,9 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
       LEFT JOIN event_locations loc
         ON loc.event_id = e.event_id
       WHERE e.event_id = $1
+        AND e.status = 'approved'
+        AND ${buildActiveEventSql("e")}
+        AND (${buildSubmissionNotExpiredSql("e.event_id")})
       LIMIT 1
       `,
       [eventId]
@@ -705,6 +700,10 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
       return res.status(500).json({ error: "Missing event schedule fields" });
     }
 
+    if (!event.end_date || !event.end_time) {
+      return res.status(500).json({ error: "Missing event end schedule fields" });
+    }
+
     if (!event.city || !event.country) {
       return res.status(500).json({ error: "Missing event location fields" });
     }
@@ -760,11 +759,7 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
         $11::varchar(10),
         $12::varchar(80),
         (($13::date + $14::time) AT TIME ZONE $17::text),
-        CASE
-          WHEN $15::date IS NOT NULL AND $16::time IS NOT NULL
-            THEN (($15::date + $16::time) AT TIME ZONE $17::text)
-          ELSE NULL
-        END,
+        (($15::date + $16::time) AT TIME ZONE $17::text),
         $13::date,
         false,
         COALESCE($18, false),
@@ -812,6 +807,7 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
     });
   } catch (error) {
     console.error("MANUAL INDEX ERROR:", error);
+
     return res.status(500).json({
       error: "Failed to index event",
       details: error instanceof Error ? error.message : error,
