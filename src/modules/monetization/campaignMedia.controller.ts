@@ -145,6 +145,7 @@ export async function approveCampaignMediaController(
 
     const adminUserId =
       (req as any).user?.id ||
+      (req as any).user?.sub ||
       (req as any).userId ||
       req.body.adminUserId;
 
@@ -188,6 +189,7 @@ export async function rejectCampaignMediaController(
 
     const adminUserId =
       (req as any).user?.id ||
+      (req as any).user?.sub ||
       (req as any).userId ||
       req.body.adminUserId;
 
