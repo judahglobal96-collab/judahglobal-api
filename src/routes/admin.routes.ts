@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/requireRole';
+import { requireRole } from '../middleware/auth.middleware';
 
 // (we will create these next)
 import {

@@ -14,7 +14,7 @@ import {
 } from './orgAccounts.controller';
 
 import { requireAuth } from '../../../middleware/auth.middleware';
-import { requireRole } from '../../../middleware/requireRole';
+import { requireRole } from '../../../middleware/auth.middleware';
 
 const router = Router();
 
