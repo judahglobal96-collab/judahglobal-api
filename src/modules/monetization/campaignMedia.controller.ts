@@ -143,6 +143,9 @@ export async function approveCampaignMediaController(
   try {
     const { replacementMediaId, currentMediaId } = req.body;
 
+    console.log("APPROVE REQ USER:", (req as any).user);
+    console.log("APPROVE REQ BODY:", req.body);
+
     const adminUserId =
       (req as any).user?.id ||
       (req as any).user?.sub ||

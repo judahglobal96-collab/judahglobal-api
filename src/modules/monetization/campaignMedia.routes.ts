@@ -10,6 +10,7 @@ import {
   getCampaignMediaHistoryController,
   getLiveCampaignMediaController,
 } from "./campaignMedia.controller";
+import { requireAuth, requireRole } from "../../middleware/auth.middleware";
 
 const router = Router();
 
@@ -17,10 +18,19 @@ router.post("/", createCampaignMediaController);
 
 router.get("/pending", getPendingCampaignMediaController);
 
-router.post("/approve", approveCampaignMediaController);
+router.post(
+  "/approve",
+  requireAuth,
+  requireRole("admin", "sysadmin", "execsysadmin"),
+  approveCampaignMediaController
+);
 
-router.post("/reject", rejectCampaignMediaController);
-
+router.post(
+  "/reject",
+  requireAuth,
+  requireRole("admin", "sysadmin", "execsysadmin"),
+  rejectCampaignMediaController
+);
 router.get("/current", getCurrentLiveCampaignMediaController);
 
 router.get("/approved", getApprovedCampaignMediaController);
