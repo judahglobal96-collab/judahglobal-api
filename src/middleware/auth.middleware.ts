@@ -34,7 +34,8 @@ export function requireAuth(
         message: 'Unauthorized. Missing token.',
       });
     }
-
+    console.log("VERIFY SECRET:", process.env.JWT_SECRET);
+    console.log("TOKEN:", token);
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET as string
@@ -43,7 +44,7 @@ export function requireAuth(
       email: string;
       role: 'user' | 'admin' | 'sysadmin' | 'execsysadmin';
     };
-
+    console.log("DECODED:", decoded);
     req.user = {
       id: decoded.sub,
       email: decoded.email,
@@ -52,6 +53,7 @@ export function requireAuth(
 
     next();
   } catch (error) {
+    console.error("JWT VERIFY ERROR:", error);
     console.error('Auth error:', error);
     return res.status(401).json({
       message: 'Unauthorized. Invalid or expired token.',
