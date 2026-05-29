@@ -25,7 +25,6 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
           em.moderation_reviewed_at,
           em.created_at,
           em.updated_at,
-
           es.id AS submissions_id,
           es.event_code,
           es.title,
@@ -58,22 +57,23 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
           pm.approved_at AS moderation_reviewed_at,
           pm.created_at,
           pm.updated_at,
-
           NULL::uuid AS submissions_id,
           NULL::text AS event_code,
           c.campaign_name AS title,
           c.status AS parent_status,
           NULL::text AS slug,
-          pm.campaign_id,
+          c.id AS campaign_id,
           pm.campaign_item_id,
-          pm.placement_type,
+          COALESCE(pm.placement_type, ci.placement_type) AS placement_type,
           c.campaign_name
         FROM campaign_promo_media pm
+        INNER JOIN ad_campaign_items ci
+          ON ci.id = pm.campaign_item_id
         INNER JOIN ad_campaigns c
-          ON c.id = pm.campaign_id
+          ON c.id = ci.campaign_id
         WHERE pm.moderation_status = 'pending'
 
-                UNION ALL
+        UNION ALL
 
         SELECT
           esm.id AS media_id,
@@ -91,13 +91,11 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
           NULL::timestamp AS moderation_reviewed_at,
           esm.created_at,
           esm.updated_at,
-
           es.id AS submissions_id,
           es.event_code,
           es.title,
           es.status AS parent_status,
           es.slug,
-
           NULL::uuid AS campaign_id,
           NULL::uuid AS campaign_item_id,
           NULL::text AS placement_type,
@@ -106,7 +104,6 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
         INNER JOIN event_submissions es
           ON es.id = esm.event_submission_id
         WHERE es.status = 'pending'
-        
       ) AS combined_media
       ORDER BY created_at ASC;
     `;
@@ -120,6 +117,7 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("getPendingMediaReviews error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch pending media reviews.",
@@ -151,7 +149,6 @@ export const getApprovedMediaReviews = async (_req: Request, res: Response) => {
           em.moderation_reviewed_at,
           em.created_at,
           em.updated_at,
-
           es.id AS submissions_id,
           es.event_code,
           es.title,
@@ -184,19 +181,20 @@ export const getApprovedMediaReviews = async (_req: Request, res: Response) => {
           pm.approved_at AS moderation_reviewed_at,
           pm.created_at,
           pm.updated_at,
-
           NULL::uuid AS submissions_id,
           NULL::text AS event_code,
           c.campaign_name AS title,
           c.status AS parent_status,
           NULL::text AS slug,
-          pm.campaign_id,
+          c.id AS campaign_id,
           pm.campaign_item_id,
-          pm.placement_type,
+          COALESCE(pm.placement_type, ci.placement_type) AS placement_type,
           c.campaign_name
         FROM campaign_promo_media pm
+        INNER JOIN ad_campaign_items ci
+          ON ci.id = pm.campaign_item_id
         INNER JOIN ad_campaigns c
-          ON c.id = pm.campaign_id
+          ON c.id = ci.campaign_id
         WHERE pm.moderation_status = 'approved'
       ) AS combined_media
       ORDER BY updated_at DESC NULLS LAST, created_at DESC;
@@ -211,6 +209,7 @@ export const getApprovedMediaReviews = async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("getApprovedMediaReviews error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch approved media.",
@@ -242,7 +241,6 @@ export const getRejectedMediaReviews = async (_req: Request, res: Response) => {
           em.moderation_reviewed_at,
           em.created_at,
           em.updated_at,
-
           es.id AS submissions_id,
           es.event_code,
           es.title,
@@ -275,19 +273,20 @@ export const getRejectedMediaReviews = async (_req: Request, res: Response) => {
           pm.approved_at AS moderation_reviewed_at,
           pm.created_at,
           pm.updated_at,
-
           NULL::uuid AS submissions_id,
           NULL::text AS event_code,
           c.campaign_name AS title,
           c.status AS parent_status,
           NULL::text AS slug,
-          pm.campaign_id,
+          c.id AS campaign_id,
           pm.campaign_item_id,
-          pm.placement_type,
+          COALESCE(pm.placement_type, ci.placement_type) AS placement_type,
           c.campaign_name
         FROM campaign_promo_media pm
+        INNER JOIN ad_campaign_items ci
+          ON ci.id = pm.campaign_item_id
         INNER JOIN ad_campaigns c
-          ON c.id = pm.campaign_id
+          ON c.id = ci.campaign_id
         WHERE pm.moderation_status = 'rejected'
       ) AS combined_media
       ORDER BY updated_at DESC NULLS LAST, created_at DESC;
@@ -302,6 +301,7 @@ export const getRejectedMediaReviews = async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("getRejectedMediaReviews error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch rejected media.",
@@ -319,7 +319,6 @@ export const approveMediaReview = async (req: Request, res: Response) => {
   try {
     await db.query("BEGIN");
 
-    // 1. Try EVENT MEDIA first
     const eventMediaCheck = await db.query(
       `SELECT event_id FROM event_media WHERE id = $1::uuid`,
       [mediaId]
@@ -361,7 +360,6 @@ export const approveMediaReview = async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Try CAMPAIGN PROMO MEDIA
     const promoMediaCheck = await db.query(
       `
       SELECT campaign_item_id
@@ -420,6 +418,7 @@ export const approveMediaReview = async (req: Request, res: Response) => {
   } catch (error) {
     await db.query("ROLLBACK");
     console.error("approveMediaReview error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to approve media.",
@@ -438,7 +437,6 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
   try {
     await db.query("BEGIN");
 
-    // 1. Try EVENT MEDIA first
     const eventMediaCheck = await db.query(
       `SELECT id FROM event_media WHERE id = $1::uuid`,
       [mediaId]
@@ -468,7 +466,6 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Try CAMPAIGN PROMO MEDIA
     const promoMediaCheck = await db.query(
       `SELECT id FROM campaign_promo_media WHERE id = $1::uuid`,
       [mediaId]
@@ -507,6 +504,7 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
   } catch (error) {
     await db.query("ROLLBACK");
     console.error("rejectMediaReview error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to reject media.",
@@ -575,6 +573,7 @@ export const getMediaReviewEventDetail = async (req: Request, res: Response) => 
     });
   } catch (error) {
     console.error("getMediaReviewEventDetail error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch event media review detail.",
