@@ -1,12 +1,15 @@
 import { Router } from "express";
-import multer from "multer";
+import  multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 
 const router = Router();
 
-const uploadDir = path.join(process.cwd(), "uploads", "media");
+const UPLOAD_DIR =
+  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+
+const uploadDir = path.join(UPLOAD_DIR, "media");
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });

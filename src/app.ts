@@ -182,7 +182,12 @@ app.use("/api/v1/events", eventDiscoveryRoutes);
 app.use("/api/v1/discovery", discoveryRoutes);
 
 app.get("/api/events/:slug", getPublicEventBySlug);
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+const UPLOAD_DIR =
+  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+
+app.use("/uploads", express.static(UPLOAD_DIR));
+
 app.use("/api/v1/admin/media-review", adminMediaReviewRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
