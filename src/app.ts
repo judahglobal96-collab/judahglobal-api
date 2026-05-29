@@ -157,6 +157,21 @@ app.post(
 
 app.use(express.json());
 
+import fs from "fs";
+
+app.get("/debug/uploads", (_req, res) => {
+  const uploadsPath = path.join(process.cwd(), "uploads");
+
+  res.json({
+    cwd: process.cwd(),
+    uploadsPath,
+    exists: fs.existsSync(uploadsPath),
+    files: fs.existsSync(uploadsPath)
+      ? fs.readdirSync(uploadsPath)
+      : [],
+  });
+});
+
 app.get("/", (_req, res) => {
   res.send("Judah Global API running");
 });
