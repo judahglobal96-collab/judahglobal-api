@@ -577,58 +577,83 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
     const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
 
-    const result = await db.query(
-      `
-      SELECT
-        ${buildEventCardSelectSql({
-          mediaExpression: "media.file_url",
-          isMajorEventExpression: `(${majorEventExistsSql})`,
-          isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
-        })},
-        sp.contact_email,
-        loc.venue_name,
-        loc.address_line_1 AS address_line_1,
-        loc.city AS location_city,
-        loc.state_region AS location_state,
-        flyer.file_url AS official_flyer_url
-      FROM event_discovery_index e
-      LEFT JOIN LATERAL (
-        SELECT em.file_url
-        FROM event_media em
-        WHERE em.event_id = e.event_id
-          AND em.is_primary = true
-          AND em.moderation_status = 'approved'
-        ORDER BY em.created_at DESC
-        LIMIT 1
-      ) media ON true
-      LEFT JOIN LATERAL (
-        SELECT pm.file_url
-        FROM campaign_promo_media pm
-        INNER JOIN ad_campaign_items ci
-          ON ci.id = pm.campaign_item_id
-        INNER JOIN ad_campaigns c
-          ON c.id = ci.campaign_id
-        WHERE c.linked_event_id = e.event_id
-          AND ci.placement_type = 'official_flyer'
-          AND c.status = 'paid'
-          AND ci.status = 'paid'
-          AND pm.moderation_status = 'approved'
-          AND pm.is_active = true
-        ORDER BY pm.updated_at DESC, pm.created_at DESC
-        LIMIT 1
-      ) flyer ON true
-      LEFT JOIN event_sponsors sp
-        ON sp.event_id = e.event_id
-      LEFT JOIN event_locations loc
-        ON loc.event_id = e.event_id
-      WHERE e.event_id = $1
-        AND e.status = 'approved'
-        AND ${buildActiveEventSql("e")}
-        AND (${buildSubmissionNotExpiredSql("e.event_id")})
-      LIMIT 1
-      `,
-      [eventId]
-    );
+const result = await db.query(
+  `
+  SELECT
+    ${buildEventCardSelectSql({
+      mediaExpression: "COALESCE(media.file_url, hero_promo.file_url, flyer.file_url)",
+      isMajorEventExpression: `(${majorEventExistsSql})`,
+      isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+    })},
+    hero_promo.file_url AS campaign_media_url,
+    sp.contact_email,
+    loc.venue_name,
+    loc.address_line_1 AS address_line_1,
+    loc.city AS location_city,
+    loc.state_region AS location_state,
+    flyer.file_url AS official_flyer_url
+  FROM event_discovery_index e
+  LEFT JOIN LATERAL (
+    SELECT em.file_url
+    FROM event_media em
+    WHERE em.event_id = e.event_id
+      AND em.is_primary = true
+      AND em.moderation_status = 'approved'
+    ORDER BY em.created_at DESC
+    LIMIT 1
+  ) media ON true
+  LEFT JOIN LATERAL (
+    SELECT pm.file_url
+    FROM campaign_promo_media pm
+    INNER JOIN ad_campaign_items ci
+      ON ci.id = pm.campaign_item_id
+    INNER JOIN ad_campaigns c
+      ON c.id = ci.campaign_id
+    WHERE c.linked_event_id = e.event_id
+      AND ci.placement_type IN (
+        'hero',
+        'homepage_top',
+        'homepage_top_row',
+        'discovery_top',
+        'discovery_top_row',
+        'major_event',
+        'featured_badge'
+      )
+      AND c.status = 'paid'
+      AND ci.status = 'paid'
+      AND pm.moderation_status = 'approved'
+      AND pm.is_active = true
+    ORDER BY pm.updated_at DESC, pm.created_at DESC
+    LIMIT 1
+  ) hero_promo ON true
+  LEFT JOIN LATERAL (
+    SELECT pm.file_url
+    FROM campaign_promo_media pm
+    INNER JOIN ad_campaign_items ci
+      ON ci.id = pm.campaign_item_id
+    INNER JOIN ad_campaigns c
+      ON c.id = ci.campaign_id
+    WHERE c.linked_event_id = e.event_id
+      AND ci.placement_type = 'official_flyer'
+      AND c.status = 'paid'
+      AND ci.status = 'paid'
+      AND pm.moderation_status = 'approved'
+      AND pm.is_active = true
+    ORDER BY pm.updated_at DESC, pm.created_at DESC
+    LIMIT 1
+  ) flyer ON true
+  LEFT JOIN event_sponsors sp
+    ON sp.event_id = e.event_id
+  LEFT JOIN event_locations loc
+    ON loc.event_id = e.event_id
+  WHERE e.event_id = $1
+    AND e.status = 'approved'
+    AND ${buildActiveEventSql("e")}
+    AND (${buildSubmissionNotExpiredSql("e.event_id")})
+  LIMIT 1
+  `,
+  [eventId]
+);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Discovered event not found" });
