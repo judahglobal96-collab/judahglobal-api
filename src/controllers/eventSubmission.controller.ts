@@ -406,9 +406,11 @@ export const uploadEventMedia = async (
         event_id,
         media_type,
         file_url,
+        moderation_status,
         created_at
+        updated_at
       )
-      VALUES ($1, $2, $3, $4, NOW())
+      VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
       `,
       [
         uuidv4(),
