@@ -10,6 +10,7 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
       SELECT *
       FROM (
         SELECT
+          em.id AS id,
           em.id AS media_id,
           'event_media' AS media_source,
           em.event_id,
@@ -42,6 +43,7 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
         UNION ALL
 
         SELECT
+          pm.id AS id,
           pm.id AS media_id,
           'campaign_promo_media' AS media_source,
           NULL::uuid AS event_id,
@@ -72,39 +74,9 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
         INNER JOIN ad_campaigns c
           ON c.id = ci.campaign_id
         WHERE pm.moderation_status = 'pending'
-
-        UNION ALL
-
-        SELECT
-          esm.id AS media_id,
-          'event_submission_media' AS media_source,
-          esm.event_submission_id AS event_id,
-          esm.media_type,
-          esm.media_url AS media_url,
-          NULL::text AS file_name,
-          NULL::text AS mime_type,
-          NULL::integer AS file_size,
-          NULL::boolean AS is_primary,
-          NULL::boolean AS is_active,
-          'pending'::text AS moderation_status,
-          NULL::text AS moderation_reason,
-          NULL::timestamp AS moderation_reviewed_at,
-          esm.created_at,
-          esm.updated_at,
-          es.id AS submissions_id,
-          es.event_code,
-          es.title,
-          es.status AS parent_status,
-          es.slug,
-          NULL::uuid AS campaign_id,
-          NULL::uuid AS campaign_item_id,
-          NULL::text AS placement_type,
-          NULL::text AS campaign_name
-        FROM event_submission_media esm
-        INNER JOIN event_submissions es
-          ON es.id = esm.event_submission_id
-        WHERE es.status = 'pending'
       ) AS combined_media
+      WHERE media_url IS NOT NULL
+        AND TRIM(media_url) <> ''
       ORDER BY created_at ASC;
     `;
 
@@ -134,6 +106,7 @@ export const getApprovedMediaReviews = async (_req: Request, res: Response) => {
       SELECT *
       FROM (
         SELECT
+          em.id AS id,
           em.id AS media_id,
           'event_media' AS media_source,
           em.event_id,
@@ -166,6 +139,7 @@ export const getApprovedMediaReviews = async (_req: Request, res: Response) => {
         UNION ALL
 
         SELECT
+          pm.id AS id,
           pm.id AS media_id,
           'campaign_promo_media' AS media_source,
           NULL::uuid AS event_id,
@@ -197,6 +171,8 @@ export const getApprovedMediaReviews = async (_req: Request, res: Response) => {
           ON c.id = ci.campaign_id
         WHERE pm.moderation_status = 'approved'
       ) AS combined_media
+      WHERE media_url IS NOT NULL
+        AND TRIM(media_url) <> ''
       ORDER BY updated_at DESC NULLS LAST, created_at DESC;
     `;
 
@@ -226,6 +202,7 @@ export const getRejectedMediaReviews = async (_req: Request, res: Response) => {
       SELECT *
       FROM (
         SELECT
+          em.id AS id,
           em.id AS media_id,
           'event_media' AS media_source,
           em.event_id,
@@ -258,6 +235,7 @@ export const getRejectedMediaReviews = async (_req: Request, res: Response) => {
         UNION ALL
 
         SELECT
+          pm.id AS id,
           pm.id AS media_id,
           'campaign_promo_media' AS media_source,
           NULL::uuid AS event_id,
@@ -289,6 +267,8 @@ export const getRejectedMediaReviews = async (_req: Request, res: Response) => {
           ON c.id = ci.campaign_id
         WHERE pm.moderation_status = 'rejected'
       ) AS combined_media
+      WHERE media_url IS NOT NULL
+        AND TRIM(media_url) <> ''
       ORDER BY updated_at DESC NULLS LAST, created_at DESC;
     `;
 
@@ -320,7 +300,11 @@ export const approveMediaReview = async (req: Request, res: Response) => {
     await db.query("BEGIN");
 
     const eventMediaCheck = await db.query(
-      `SELECT event_id FROM event_media WHERE id = $1::uuid`,
+      `
+        SELECT event_id
+        FROM event_media
+        WHERE id = $1::uuid
+      `,
       [mediaId]
     );
 
@@ -329,24 +313,24 @@ export const approveMediaReview = async (req: Request, res: Response) => {
 
       await db.query(
         `
-        UPDATE event_media
-        SET is_primary = false
-        WHERE event_id = $1
+          UPDATE event_media
+          SET is_primary = false
+          WHERE event_id = $1
         `,
         [eventId]
       );
 
       const result = await db.query(
         `
-        UPDATE event_media
-        SET
-          moderation_status = 'approved',
-          moderation_reason = NULL,
-          moderation_reviewed_at = NOW(),
-          is_primary = true,
-          updated_at = NOW()
-        WHERE id = $1::uuid
-        RETURNING *;
+          UPDATE event_media
+          SET
+            moderation_status = 'approved',
+            moderation_reason = NULL,
+            moderation_reviewed_at = NOW(),
+            is_primary = true,
+            updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING *;
         `,
         [mediaId]
       );
@@ -362,9 +346,9 @@ export const approveMediaReview = async (req: Request, res: Response) => {
 
     const promoMediaCheck = await db.query(
       `
-      SELECT campaign_item_id
-      FROM campaign_promo_media
-      WHERE id = $1::uuid
+        SELECT campaign_item_id
+        FROM campaign_promo_media
+        WHERE id = $1::uuid
       `,
       [mediaId]
     );
@@ -374,28 +358,28 @@ export const approveMediaReview = async (req: Request, res: Response) => {
 
       await db.query(
         `
-        UPDATE campaign_promo_media
-        SET
-          is_active = false,
-          updated_at = NOW()
-        WHERE campaign_item_id = $1::uuid
-          AND is_active = true
+          UPDATE campaign_promo_media
+          SET
+            is_active = false,
+            updated_at = NOW()
+          WHERE campaign_item_id = $1::uuid
+            AND is_active = true
         `,
         [campaignItemId]
       );
 
       const result = await db.query(
         `
-        UPDATE campaign_promo_media
-        SET
-          moderation_status = 'approved',
-          rejection_reason = NULL,
-          approved_by_user_id = $2::uuid,
-          approved_at = NOW(),
-          is_active = true,
-          updated_at = NOW()
-        WHERE id = $1::uuid
-        RETURNING *;
+          UPDATE campaign_promo_media
+          SET
+            moderation_status = 'approved',
+            rejection_reason = NULL,
+            approved_by_user_id = $2::uuid,
+            approved_at = NOW(),
+            is_active = true,
+            updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING *;
         `,
         [mediaId, reviewedByUserId]
       );
@@ -438,21 +422,25 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
     await db.query("BEGIN");
 
     const eventMediaCheck = await db.query(
-      `SELECT id FROM event_media WHERE id = $1::uuid`,
+      `
+        SELECT id
+        FROM event_media
+        WHERE id = $1::uuid
+      `,
       [mediaId]
     );
 
     if (eventMediaCheck.rows.length > 0) {
       const eventResult = await db.query(
         `
-        UPDATE event_media
-        SET
-          moderation_status = 'rejected',
-          moderation_reason = NULLIF($2, ''),
-          moderation_reviewed_at = NOW(),
-          updated_at = NOW()
-        WHERE id = $1::uuid
-        RETURNING *;
+          UPDATE event_media
+          SET
+            moderation_status = 'rejected',
+            moderation_reason = NULLIF($2, ''),
+            moderation_reviewed_at = NOW(),
+            updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING *;
         `,
         [mediaId, reason]
       );
@@ -467,21 +455,25 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
     }
 
     const promoMediaCheck = await db.query(
-      `SELECT id FROM campaign_promo_media WHERE id = $1::uuid`,
+      `
+        SELECT id
+        FROM campaign_promo_media
+        WHERE id = $1::uuid
+      `,
       [mediaId]
     );
 
     if (promoMediaCheck.rows.length > 0) {
       const promoResult = await db.query(
         `
-        UPDATE campaign_promo_media
-        SET
-          moderation_status = 'rejected',
-          rejection_reason = NULLIF($2, ''),
-          is_active = false,
-          updated_at = NOW()
-        WHERE id = $1::uuid
-        RETURNING *;
+          UPDATE campaign_promo_media
+          SET
+            moderation_status = 'rejected',
+            rejection_reason = NULLIF($2, ''),
+            is_active = false,
+            updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING *;
         `,
         [mediaId, reason]
       );
@@ -515,7 +507,10 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
 /**
  * GET /api/v1/admin/media-review/event/:eventId
  */
-export const getMediaReviewEventDetail = async (req: Request, res: Response) => {
+export const getMediaReviewEventDetail = async (
+  req: Request,
+  res: Response
+) => {
   const { eventId } = req.params;
 
   try {
@@ -536,6 +531,7 @@ export const getMediaReviewEventDetail = async (req: Request, res: Response) => 
 
     const mediaQuery = `
       SELECT
+        id AS id,
         id AS media_id,
         event_id,
         media_type,
