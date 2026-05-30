@@ -407,7 +407,7 @@ export const uploadEventMedia = async (
         media_type,
         file_url,
         moderation_status,
-        created_at
+        created_at,
         updated_at
       )
       VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
