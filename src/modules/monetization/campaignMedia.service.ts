@@ -166,6 +166,11 @@ export async function createPendingCampaignMedia(
     warnings: validation.warnings,
   };
 }
+// LEGACY ARM MIGRATION NOTE:
+// These campaign media review queries are no longer the source of truth.
+// ARM owns pending/approved/rejected media moderation through
+// /api/v1/admin/media-review.
+// Keep temporarily while campaignMedia.controller.ts remains in the codebase.
 export async function getPendingCampaignMedia() {
   const result = await db.query(
     `
@@ -179,6 +184,10 @@ export async function getPendingCampaignMedia() {
 
   return result.rows;
 }
+// LEGACY: Campaign media review queue.
+// ARM now owns pending/approved/rejected media moderation.
+// Keep temporarily until campaignMedia.controller.ts is fully retired.
+
 export async function getApprovedCampaignMedia() {
   const result = await db.query(
     `
@@ -191,6 +200,11 @@ export async function getApprovedCampaignMedia() {
 
   return result.rows;
 }
+// LEGACY: Campaign media review queue.
+// ARM now owns pending/approved/rejected media moderation.
+// Keep temporarily until campaignMedia.controller.ts is fully retired.
+// /api/v1/admin/media-review.
+// Keep temporarily while campaignMedia.controller.ts remains in the codebase.
 
 export async function getRejectedCampaignMedia() {
   const result = await db.query(
@@ -304,7 +318,9 @@ try {
   throw error;
 }
 }
-
+// LEGACY MODERATION FLOW
+// Approval/rejection responsibilities have been migrated to ARM.
+// Retained temporarily for compatibility until ARM migration is complete.
 export async function rejectCampaignMediaReplacement(
   params: RejectCampaignMediaParams
 ) {

@@ -79,7 +79,9 @@ export type ApproveCampaignMediaParams = {
   currentMediaId?: string | null;
   adminUserId: string;
 };
-
+// LEGACY MODERATION FLOW
+// Approval/rejection responsibilities have been migrated to ARM.
+// Retained temporarily for compatibility until ARM migration is complete.
 export type RejectCampaignMediaParams = {
   replacementMediaId: string;
   adminUserId: string;

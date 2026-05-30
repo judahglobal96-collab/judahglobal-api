@@ -135,7 +135,9 @@ export async function getRejectedCampaignMediaController(
     });
   }
 }
-
+// LEGACY MODERATION FLOW
+// Approval/rejection responsibilities have been migrated to ARM.
+// Retained temporarily for compatibility until ARM migration is complete.
 export async function approveCampaignMediaController(
   req: Request,
   res: Response
@@ -182,7 +184,9 @@ export async function approveCampaignMediaController(
     });
   }
 }
-
+// LEGACY MODERATION FLOW
+// Approval/rejection responsibilities have been migrated to ARM.
+// Retained temporarily for compatibility until ARM migration is complete.
 export async function rejectCampaignMediaController(
   req: Request,
   res: Response
@@ -209,13 +213,17 @@ export async function rejectCampaignMediaController(
         message: "replacementMediaId is required.",
       });
     }
-
+// LEGACY MODERATION FLOW
+// Approval/rejection responsibilities have been migrated to ARM.
+// Retained temporarily for compatibility until ARM migration is complete.
     const result = await rejectCampaignMediaReplacement({
       replacementMediaId,
       adminUserId,
       rejectionReason,
     });
-
+// LEGACY MODERATION FLOW
+// Approval/rejection responsibilities have been migrated to ARM.
+// Retained temporarily for compatibility until ARM migration is complete.
     return res.status(200).json(result);
   } catch (error: any) {
     console.error("rejectCampaignMediaController error:", error);
