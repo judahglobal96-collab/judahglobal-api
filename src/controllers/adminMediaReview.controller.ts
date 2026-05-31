@@ -42,6 +42,39 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
 
         UNION ALL
 
+        UNION ALL
+
+        SELECT
+          cm.id AS id,
+          cm.id AS media_id,
+          'campaign_media' AS media_source,
+          cm.event_id,
+          'campaign_media' AS media_type,
+          cm.file_url AS media_url,
+          cm.file_name,
+          cm.mime_type,
+          cm.file_size AS file_size,
+          NULL::boolean AS is_primary,
+          cm.is_current_live AS is_active,
+          cm.moderation_status,
+          cm.rejection_reason AS moderation_reason,
+          cm.approved_at AS moderation_reviewed_at,
+          cm.created_at,
+          cm.updated_at,
+          NULL::uuid AS submissions_id,
+          NULL::text AS event_code,
+          es.title,
+          es.status AS parent_status,
+          es.slug,
+          cm.campaign_id,
+          NULL::uuid AS campaign_item_id,
+          cm.placement_type,
+          NULL::text AS campaign_name
+        FROM campaign_media cm
+        LEFT JOIN event_submissions es
+          ON es.id = cm.event_id
+        WHERE cm.moderation_status = 'pending'
+
         SELECT
           pm.id AS id,
           pm.id AS media_id,
