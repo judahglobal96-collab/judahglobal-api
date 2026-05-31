@@ -114,8 +114,6 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
           AND cm.placement_type = 'official_flyer'
           AND cm.moderation_status = 'approved'
           AND cm.lifecycle_status = 'active'
-          AND cm.deployment_status = 'live'
-          AND cm.is_current_live = true
         ORDER BY cm.approved_at DESC NULLS LAST, cm.created_at DESC
         LIMIT 1
       ) ofm ON true
