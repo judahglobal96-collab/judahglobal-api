@@ -108,13 +108,17 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
       ) em ON true
 
       LEFT JOIN LATERAL (
-        SELECT cm.file_url
-        FROM campaign_media cm
-        WHERE cm.event_id = e.id
-          AND cm.placement_type = 'official_flyer'
-          AND cm.moderation_status = 'approved'
-          AND cm.lifecycle_status = 'active'
-        ORDER BY cm.approved_at DESC NULLS LAST, cm.created_at DESC
+        SELECT pm.file_url
+        FROM campaign_promo_media pm
+        INNER JOIN ad_campaign_items ci
+          ON ci.id = pm.campaign_item_id
+        INNER JOIN ad_campaigns c
+          ON c.id = ci.campaign_id
+        WHERE c.event_id = e.id
+          AND COALESCE(pm.placement_type, ci.placement_type) = 'official_flyer'
+          AND pm.moderation_status = 'approved'
+          AND pm.is_active = true
+        ORDER BY pm.approved_at DESC NULLS LAST, pm.created_at DESC
         LIMIT 1
       ) ofm ON true
 
