@@ -42,8 +42,6 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
 
         UNION ALL
 
-        UNION ALL
-
         SELECT
           cm.id AS id,
           cm.id AS media_id,
