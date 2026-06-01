@@ -73,6 +73,8 @@ export const getPendingMediaReviews = async (_req: Request, res: Response) => {
           ON es.id = cm.event_id
         WHERE cm.moderation_status = 'pending'
 
+        UNION ALL
+        
         SELECT
           pm.id AS id,
           pm.id AS media_id,
