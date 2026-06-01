@@ -71,8 +71,8 @@ function getMediaSlot(placementType: PlacementType): string {
   if (normalized === "hero") return "homepage_hero";
   if (normalized === "homepage_top") return "homepage_top_row";
   if (normalized === "discovery_top") return "discovery_top_row";
-  if (normalized === "featured_badge") return "featured_badge";
-  if (normalized === "major_events") return "major_events";
+  if (normalized === "featured_badge") return "primary";
+  if (normalized === "major_events") return "primary";
   
   return "primary";
 }
