@@ -6,8 +6,7 @@ import crypto from "crypto";
 
 const router = Router();
 
-const UPLOAD_DIR =
-  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "/app/uploads";
 
 const uploadDir = path.join(UPLOAD_DIR, "media");
 

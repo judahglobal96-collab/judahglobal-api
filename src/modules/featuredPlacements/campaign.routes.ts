@@ -17,7 +17,7 @@ import { uploadEventMedia } from "../../controllers/eventSubmission.controller";
 
 const router = Router(); 
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "/app/uploads";
 const campaignDir = path.join(UPLOAD_DIR, "campaigns");
 
 if (!fs.existsSync(campaignDir)) {

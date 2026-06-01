@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import type { Request } from "express";
 
-const uploadRoot = path.join(process.cwd(), "uploads");
+const uploadRoot = process.env.UPLOAD_DIR || "/app/uploads";
 const sponsorDir = path.join(uploadRoot, "sponsors");
 const eventDir = path.join(uploadRoot, "events");
 const campaignDir = path.join(uploadRoot, "campaigns");
