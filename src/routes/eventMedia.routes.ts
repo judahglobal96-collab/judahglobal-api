@@ -5,7 +5,7 @@ import { uploadEventMediaController } from "../uploads/events/controllers/eventM
 const router = Router();
 
 router.post(
-  "/events/:eventId/media",
+  "/:eventId/media",
   uploadEventMedia.single("media"),
   uploadEventMediaController
 );

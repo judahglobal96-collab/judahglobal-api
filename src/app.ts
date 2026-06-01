@@ -205,7 +205,7 @@ app.use("/api/v1/campaigns", campaignRoutes);
 
 //*app.use("/api/campaign-media", campaignMediaRoutes);*//
 
-app.use("/api/events/media", eventMediaRoutes);
+app.use("/api/events", eventMediaRoutes);
 app.use("/api/admin/events/media", eventMediaModerationRoutes);
 
 app.use("/api/v1/placements", placementHoldRoutes);
