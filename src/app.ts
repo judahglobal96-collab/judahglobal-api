@@ -164,14 +164,17 @@ app.get("/debug/uploads", (_req, res) => {
   const uploadsPath = path.join(process.cwd(), "uploads");
 
   const tree = fs.existsSync(uploadsPath)
-    ? fs.readdirSync(uploadsPath).map((name) => {
-        const fullPath = path.join(uploadsPath, name);
+    ? fs.readdirSync(uploadsPath).map((item) => {
+        const fullPath = path.join(uploadsPath, item);
+        const stat = fs.statSync(fullPath);
+
         return {
-          name,
-          isDirectory: fs.statSync(fullPath).isDirectory(),
-          files: fs.statSync(fullPath).isDirectory()
+          name: item,
+          isDirectory: stat.isDirectory(),
+          size: stat.size,
+          files: stat.isDirectory()
             ? fs.readdirSync(fullPath)
-            : [],
+            : []
         };
       })
     : [];
