@@ -1,4 +1,6 @@
 import { Router } from "express";
+import path from "path";
+import fs from "fs";
 import multer from "multer";
 import {
   checkCampaignAvailabilityController,
@@ -15,13 +17,34 @@ import { uploadEventMedia } from "../../controllers/eventSubmission.controller";
 
 const router = Router(); 
 
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const campaignDir = path.join(UPLOAD_DIR, "campaigns");
+
+if (!fs.existsSync(campaignDir)) {
+  fs.mkdirSync(campaignDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, campaignDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const base = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9-_]/g, "-")
+      .toLowerCase();
+
+    cb(null, `${Date.now()}-${base}${ext}`);
+  },
+});
+
 const upload = multer({
-  dest: "uploads/",
+  storage,
   limits: {
     fileSize: 10 * 1024 * 1024,
   },
 });
-
 /**
  * Check live availability for selected campaign items.
  */
