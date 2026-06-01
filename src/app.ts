@@ -163,13 +163,24 @@ import fs from "fs";
 app.get("/debug/uploads", (_req, res) => {
   const uploadsPath = path.join(process.cwd(), "uploads");
 
+  const tree = fs.existsSync(uploadsPath)
+    ? fs.readdirSync(uploadsPath).map((name) => {
+        const fullPath = path.join(uploadsPath, name);
+        return {
+          name,
+          isDirectory: fs.statSync(fullPath).isDirectory(),
+          files: fs.statSync(fullPath).isDirectory()
+            ? fs.readdirSync(fullPath)
+            : [],
+        };
+      })
+    : [];
+
   res.json({
     cwd: process.cwd(),
     uploadsPath,
     exists: fs.existsSync(uploadsPath),
-    files: fs.existsSync(uploadsPath)
-      ? fs.readdirSync(uploadsPath)
-      : [],
+    tree,
   });
 });
 
