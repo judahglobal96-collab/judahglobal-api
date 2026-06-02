@@ -376,7 +376,38 @@ export const approveMediaReview = async (req: Request, res: Response) => {
         media: result.rows[0],
       });
     }
+      const campaignMediaCheck = await db.query(
+        `
+        SELECT id
+        FROM campaign_media
+        WHERE id = $1::uuid
+        `,
+        [mediaId]
+      );
 
+      if (campaignMediaCheck.rows.length > 0) {
+        const result = await db.query(
+          `
+          UPDATE campaign_media
+          SET
+            moderation_status = 'approved',
+            rejection_reason = NULL,
+            approved_at = NOW(),
+            updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING *;
+          `,
+          [mediaId]
+        );
+
+        await db.query("COMMIT");
+
+        return res.status(200).json({
+          success: true,
+          message: "Campaign media approved.",
+          media: result.rows[0],
+        });
+      }
     const promoMediaCheck = await db.query(
       `
         SELECT campaign_item_id
@@ -486,7 +517,37 @@ export const rejectMediaReview = async (req: Request, res: Response) => {
         media: eventResult.rows[0],
       });
     }
+        const campaignMediaCheck = await db.query(
+          `
+          SELECT id
+          FROM campaign_media
+          WHERE id = $1::uuid
+          `,
+          [mediaId]
+        );
 
+      if (campaignMediaCheck.rows.length > 0) {
+        const result = await db.query(
+          `
+          UPDATE campaign_media
+          SET
+            moderation_status = 'rejected',
+            rejection_reason = NULLIF($2, ''),
+            updated_at = NOW()
+          WHERE id = $1::uuid
+          RETURNING *;
+          `,
+          [mediaId, reason]
+        );
+
+        await db.query("COMMIT");
+
+        return res.status(200).json({
+          success: true,
+          message: "Campaign media approved.",
+          media: result.rows[0],
+        });
+      }
     const promoMediaCheck = await db.query(
       `
         SELECT id
