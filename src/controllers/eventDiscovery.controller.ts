@@ -45,10 +45,10 @@ function buildSubmissionNotExpiredSql(eventIdReference = "e.event_id") {
       SELECT 1
       FROM event_submissions es
       WHERE es.id = ${eventIdReference}
-        AND (
-          es.expires_at IS NULL
-          OR es.expires_at > NOW()
-        )
+      AND (
+        es.expires_at IS NULL
+        OR es.expires_at > NOW()
+      )
     )
   `;
 }
@@ -61,27 +61,44 @@ function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
       INNER JOIN ad_campaigns fc
         ON fc.id = fci.campaign_id
       WHERE fc.linked_event_id = ${eventIdReference}
-        AND fci.placement_type = 'featured_badge'
-        AND fc.status = 'paid'
-        AND fci.status = 'paid'
-        AND CURRENT_DATE BETWEEN
-          (fci.placement_date AT TIME ZONE 'UTC')::date
-          AND (
-            (fci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
-          )::date
+      AND fci.placement_type = 'featured_badge'
+      AND fc.status = 'paid'
+      AND fci.status = 'paid'
+      AND CURRENT_DATE BETWEEN
+        (fci.placement_date AT TIME ZONE 'UTC')::date
+        AND (
+          (fci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
+        )::date
     )
   `;
 }
 
 function buildMajorEventExistsSql(eventIdReference = "e.event_id") {
   return `
-    EXISTS (
-      SELECT 1
-      FROM event_promotions ep
-      WHERE ep.event_id = ${eventIdReference}
-        AND ep.placement_type = 'major_event'
+    (
+      EXISTS (
+        SELECT 1
+        FROM ad_campaign_items mci
+        INNER JOIN ad_campaigns mc
+          ON mc.id = mci.campaign_id
+        WHERE mc.linked_event_id = ${eventIdReference}
+        AND mci.placement_type IN ('major_events', 'major_event')
+        AND mc.status = 'paid'
+        AND mci.status = 'paid'
+        AND CURRENT_DATE BETWEEN
+          (mci.placement_date AT TIME ZONE 'UTC')::date
+          AND (
+            (mci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
+          )::date
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM event_promotions ep
+        WHERE ep.event_id = ${eventIdReference}
+        AND ep.placement_type IN ('major_event', 'major_events')
         AND ep.status = 'active'
         AND ep.expires_at > NOW()
+      )
     )
   `;
 }
@@ -202,20 +219,23 @@ async function getPromoPlacementsByTypes(
 
   const result = await db.query(
     `
-    SELECT
+    SELECT DISTINCT ON (ci.id)
       ci.placement_type,
       ci.placement_date,
       ${buildEventCardSelectSql({
-        mediaExpression: "pm.file_url",
+        mediaExpression: "cm.file_url",
         isMajorEventExpression: `(${majorEventExistsSql})`,
       })}
     FROM ad_campaign_items ci
     INNER JOIN ad_campaigns c
       ON c.id = ci.campaign_id
-    INNER JOIN campaign_promo_media pm
-      ON pm.campaign_item_id = ci.id
-      AND pm.moderation_status = 'approved'
-      AND pm.is_active = true
+    INNER JOIN campaign_media cm
+      ON cm.campaign_id = c.id
+      AND cm.placement_type = ci.placement_type
+      AND cm.moderation_status = 'approved'
+      AND cm.lifecycle_status = 'active'
+      AND cm.deployment_status = 'live'
+      AND cm.is_current_live = true
     INNER JOIN event_discovery_index e
       ON e.event_id = c.linked_event_id
       AND e.status = 'approved'
@@ -237,8 +257,9 @@ async function getPromoPlacementsByTypes(
           ((GREATEST(ci.quantity, 1) * 7) - 1) * INTERVAL '1 day'
         )::date
     ORDER BY
-      (ci.placement_date AT TIME ZONE 'UTC')::date ASC,
-      pm.updated_at DESC,
+      ci.id,
+      cm.approved_at DESC NULLS LAST,
+      cm.updated_at DESC,
       e.starts_at_utc ASC
     LIMIT $2
     `,
@@ -250,8 +271,6 @@ async function getPromoPlacementsByTypes(
 
 export async function getAllDiscoveredEvents(req: Request, res: Response) {
   try {
-    console.log("EVENTS ROUTE DB URL:", process.env.DATABASE_URL);
-
     const result = await db.query(`
       SELECT
         event_id,
@@ -260,7 +279,7 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
         starts_at_utc
       FROM event_discovery_index
       WHERE status = 'approved'
-        AND ${buildActiveEventSql("event_discovery_index")}
+      AND ${buildActiveEventSql("event_discovery_index")}
       LIMIT 5
     `);
 
@@ -270,7 +289,6 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
     });
   } catch (error: any) {
     console.error("SIMPLE EVENTS TEST ERROR FULL:", error);
-
     return res.status(500).json({
       error: "Simple events test failed",
       databaseUrlExists: !!process.env.DATABASE_URL,
@@ -302,7 +320,7 @@ export async function getFeaturedEvents(_req: Request, res: Response) {
       `
       SELECT
         ${buildEventCardSelectSql({
-          mediaExpression: "media.file_url",
+          mediaExpression: "COALESCE(media.file_url, featured_cm.file_url)",
           isMajorEventExpression: `(${majorEventExistsSql})`,
           isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })}
@@ -316,6 +334,25 @@ export async function getFeaturedEvents(_req: Request, res: Response) {
         ORDER BY em.created_at DESC
         LIMIT 1
       ) media ON true
+      LEFT JOIN LATERAL (
+        SELECT cm.file_url
+        FROM campaign_media cm
+        INNER JOIN ad_campaigns c
+          ON c.id = cm.campaign_id
+        INNER JOIN ad_campaign_items ci
+          ON ci.campaign_id = c.id
+          AND ci.placement_type = cm.placement_type
+        WHERE c.linked_event_id = e.event_id
+          AND cm.placement_type = 'featured_badge'
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+          AND c.status = 'paid'
+          AND ci.status = 'paid'
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
+        LIMIT 1
+      ) featured_cm ON true
       LEFT JOIN event_sponsors sp
         ON sp.event_id = e.event_id
       WHERE e.status = 'approved'
@@ -336,7 +373,6 @@ export async function getFeaturedEvents(_req: Request, res: Response) {
 export async function getHomepageHeroPlacement(_req: Request, res: Response) {
   try {
     const results = await getPromoPlacementsByTypes(["hero"], 2);
-
     return res.json({
       success: true,
       results,
@@ -425,62 +461,85 @@ export async function getMajorEvents(req: Request, res: Response) {
 
     const countQuery = `
       SELECT COUNT(DISTINCT e.event_id)::int AS total
-      FROM event_promotions ep
+      FROM ad_campaign_items ci
+      INNER JOIN ad_campaigns c
+        ON c.id = ci.campaign_id
+      INNER JOIN campaign_media cm
+        ON cm.campaign_id = c.id
+        AND cm.placement_type = ci.placement_type
+        AND cm.moderation_status = 'approved'
+        AND cm.lifecycle_status = 'active'
+        AND cm.deployment_status = 'live'
+        AND cm.is_current_live = true
       INNER JOIN event_discovery_index e
-        ON e.event_id = ep.event_id
+        ON e.event_id = c.linked_event_id
         AND e.status = 'approved'
         AND ${buildActiveEventSql("e")}
-      WHERE ep.placement_type = 'major_event'
-        AND ep.status = 'active'
-        AND ep.expires_at > NOW()
+      WHERE ci.placement_type IN ('major_events', 'major_event')
+        AND c.status = 'paid'
+        AND ci.status = 'paid'
         AND (${buildSubmissionNotExpiredSql("e.event_id")})
         AND (
           $1::text IS NULL
           OR e.country ILIKE $1::text
         )
+        AND CURRENT_DATE BETWEEN
+          (ci.placement_date AT TIME ZONE 'UTC')::date
+          AND (
+            (ci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
+          )::date
     `;
 
     const countResult = await db.query(countQuery, [regionParam]);
     const total = countResult.rows[0]?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
+
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
 
     const result = await db.query(
       `
       SELECT DISTINCT ON (e.event_id)
         ${buildEventCardSelectSql({
-          mediaExpression: "media.file_url",
+          mediaExpression: "cm.file_url",
           isMajorEventExpression: "true",
           isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })},
-        ep.expires_at AS major_event_expires_at
-      FROM event_promotions ep
+        (
+          (ci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
+        ) AS major_event_expires_at
+      FROM ad_campaign_items ci
+      INNER JOIN ad_campaigns c
+        ON c.id = ci.campaign_id
+      INNER JOIN campaign_media cm
+        ON cm.campaign_id = c.id
+        AND cm.placement_type = ci.placement_type
+        AND cm.moderation_status = 'approved'
+        AND cm.lifecycle_status = 'active'
+        AND cm.deployment_status = 'live'
+        AND cm.is_current_live = true
       INNER JOIN event_discovery_index e
-        ON e.event_id = ep.event_id
+        ON e.event_id = c.linked_event_id
         AND e.status = 'approved'
         AND ${buildActiveEventSql("e")}
-      LEFT JOIN LATERAL (
-        SELECT em.file_url
-        FROM event_media em
-        WHERE em.event_id = e.event_id
-          AND em.is_primary = true
-          AND em.moderation_status = 'approved'
-        ORDER BY em.created_at DESC
-        LIMIT 1
-      ) media ON true
       LEFT JOIN event_sponsors sp
         ON sp.event_id = e.event_id
-      WHERE ep.placement_type = 'major_event'
-        AND ep.status = 'active'
-        AND ep.expires_at > NOW()
+      WHERE ci.placement_type IN ('major_events', 'major_event')
+        AND c.status = 'paid'
+        AND ci.status = 'paid'
         AND (${buildSubmissionNotExpiredSql("e.event_id")})
         AND (
           $3::text IS NULL
           OR e.country ILIKE $3::text
         )
+        AND CURRENT_DATE BETWEEN
+          (ci.placement_date AT TIME ZONE 'UTC')::date
+          AND (
+            (ci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
+          )::date
       ORDER BY
         e.event_id,
-        ep.expires_at DESC,
+        cm.approved_at DESC NULLS LAST,
+        cm.updated_at DESC,
         e.starts_at_utc ASC
       LIMIT $1
       OFFSET $2
@@ -522,7 +581,7 @@ export async function searchDiscoveredEvents(req: Request, res: Response) {
       `
       SELECT
         ${buildEventCardSelectSql({
-          mediaExpression: "media.file_url",
+          mediaExpression: "COALESCE(media.file_url, event_campaign_media.file_url)",
           isMajorEventExpression: `(${majorEventExistsSql})`,
           isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })}
@@ -536,6 +595,17 @@ export async function searchDiscoveredEvents(req: Request, res: Response) {
         ORDER BY em.created_at DESC
         LIMIT 1
       ) media ON true
+      LEFT JOIN LATERAL (
+        SELECT cm.file_url
+        FROM campaign_media cm
+        WHERE cm.event_id = e.event_id
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
+        LIMIT 1
+      ) event_campaign_media ON true
       LEFT JOIN event_sponsors sp
         ON sp.event_id = e.event_id
       WHERE ${whereClause}
@@ -577,83 +647,84 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
     const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
 
-const result = await db.query(
-  `
-  SELECT
-    ${buildEventCardSelectSql({
-      mediaExpression: "COALESCE(media.file_url, hero_promo.file_url, flyer.file_url)",
-      isMajorEventExpression: `(${majorEventExistsSql})`,
-      isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
-    })},
-    hero_promo.file_url AS campaign_media_url,
-    sp.contact_email,
-    loc.venue_name,
-    loc.address_line_1 AS address_line_1,
-    loc.city AS location_city,
-    loc.state_region AS location_state,
-    flyer.file_url AS official_flyer_url
-  FROM event_discovery_index e
-  LEFT JOIN LATERAL (
-    SELECT em.file_url
-    FROM event_media em
-    WHERE em.event_id = e.event_id
-      AND em.is_primary = true
-      AND em.moderation_status = 'approved'
-    ORDER BY em.created_at DESC
-    LIMIT 1
-  ) media ON true
-  LEFT JOIN LATERAL (
-    SELECT pm.file_url
-    FROM campaign_promo_media pm
-    INNER JOIN ad_campaign_items ci
-      ON ci.id = pm.campaign_item_id
-    INNER JOIN ad_campaigns c
-      ON c.id = ci.campaign_id
-    WHERE c.linked_event_id = e.event_id
-      AND ci.placement_type IN (
-        'hero',
-        'homepage_top',
-        'homepage_top_row',
-        'discovery_top',
-        'discovery_top_row',
-        'major_event',
-        'featured_badge'
-      )
-      AND c.status = 'paid'
-      AND ci.status = 'paid'
-      AND pm.moderation_status = 'approved'
-      AND pm.is_active = true
-    ORDER BY pm.updated_at DESC, pm.created_at DESC
-    LIMIT 1
-  ) hero_promo ON true
-  LEFT JOIN LATERAL (
-    SELECT pm.file_url
-    FROM campaign_promo_media pm
-    INNER JOIN ad_campaign_items ci
-      ON ci.id = pm.campaign_item_id
-    INNER JOIN ad_campaigns c
-      ON c.id = ci.campaign_id
-    WHERE c.linked_event_id = e.event_id
-      AND ci.placement_type = 'official_flyer'
-      AND c.status = 'paid'
-      AND ci.status = 'paid'
-      AND pm.moderation_status = 'approved'
-      AND pm.is_active = true
-    ORDER BY pm.updated_at DESC, pm.created_at DESC
-    LIMIT 1
-  ) flyer ON true
-  LEFT JOIN event_sponsors sp
-    ON sp.event_id = e.event_id
-  LEFT JOIN event_locations loc
-    ON loc.event_id = e.event_id
-  WHERE e.event_id = $1
-    AND e.status = 'approved'
-    AND ${buildActiveEventSql("e")}
-    AND (${buildSubmissionNotExpiredSql("e.event_id")})
-  LIMIT 1
-  `,
-  [eventId]
-);
+    const result = await db.query(
+      `
+      SELECT
+        ${buildEventCardSelectSql({
+          mediaExpression:
+            "COALESCE(media.file_url, campaign_cover.file_url, official_flyer.file_url)",
+          isMajorEventExpression: `(${majorEventExistsSql})`,
+          isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
+        })},
+        campaign_cover.file_url AS campaign_media_url,
+        sp.contact_email,
+        loc.venue_name,
+        loc.address_line_1 AS address_line_1,
+        loc.city AS location_city,
+        loc.state_region AS location_state,
+        official_flyer.file_url AS official_flyer_url
+      FROM event_discovery_index e
+      LEFT JOIN LATERAL (
+        SELECT em.file_url
+        FROM event_media em
+        WHERE em.event_id = e.event_id
+          AND em.is_primary = true
+          AND em.moderation_status = 'approved'
+        ORDER BY em.created_at DESC
+        LIMIT 1
+      ) media ON true
+      LEFT JOIN LATERAL (
+        SELECT cm.file_url
+        FROM campaign_media cm
+        INNER JOIN ad_campaigns c
+          ON c.id = cm.campaign_id
+        INNER JOIN ad_campaign_items ci
+          ON ci.campaign_id = c.id
+          AND ci.placement_type = cm.placement_type
+        WHERE c.linked_event_id = e.event_id
+          AND cm.placement_type IN (
+            'hero',
+            'homepage_top',
+            'homepage_top_row',
+            'discovery_top',
+            'discovery_top_row',
+            'major_events',
+            'major_event',
+            'featured_badge'
+          )
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+          AND c.status = 'paid'
+          AND ci.status = 'paid'
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
+        LIMIT 1
+      ) campaign_cover ON true
+      LEFT JOIN LATERAL (
+        SELECT cm.file_url
+        FROM campaign_media cm
+        WHERE cm.event_id = e.event_id
+          AND cm.placement_type = 'official_flyer'
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.created_at DESC
+        LIMIT 1
+      ) official_flyer ON true
+      LEFT JOIN event_sponsors sp
+        ON sp.event_id = e.event_id
+      LEFT JOIN event_locations loc
+        ON loc.event_id = e.event_id
+      WHERE e.event_id = $1
+        AND e.status = 'approved'
+        AND ${buildActiveEventSql("e")}
+        AND (${buildSubmissionNotExpiredSql("e.event_id")})
+      LIMIT 1
+      `,
+      [eventId]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Discovered event not found" });
@@ -742,7 +813,9 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
     const shortDescription = event.description?.slice(0, 300) ?? null;
     const sponsorName = event.sponsor_name ?? event.submitter_email ?? null;
 
-    await db.query(`DELETE FROM event_discovery_index WHERE event_id = $1`, [event.id]);
+    await db.query(`DELETE FROM event_discovery_index WHERE event_id = $1`, [
+      event.id,
+    ]);
 
     await db.query(
       `
@@ -832,7 +905,6 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
     });
   } catch (error) {
     console.error("MANUAL INDEX ERROR:", error);
-
     return res.status(500).json({
       error: "Failed to index event",
       details: error instanceof Error ? error.message : error,

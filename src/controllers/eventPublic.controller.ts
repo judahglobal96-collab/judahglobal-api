@@ -74,7 +74,7 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         edi.ends_at_local,
         edi.schedule_timezone AS discovery_timezone,
 
-        em.file_url AS media_url,
+        COALESCE(em.file_url, campaign_cover.file_url) AS media_url,
         em.moderation_status AS media_status,
         em.is_primary AS media_primary,
 
@@ -110,6 +110,35 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
       LEFT JOIN LATERAL (
         SELECT cm.file_url
         FROM campaign_media cm
+        INNER JOIN ad_campaigns c
+          ON c.id = cm.campaign_id
+        INNER JOIN ad_campaign_items ci
+          ON ci.campaign_id = c.id
+          AND ci.placement_type = cm.placement_type
+        WHERE c.linked_event_id = e.id
+          AND cm.placement_type IN (
+            'hero',
+            'homepage_top',
+            'homepage_top_row',
+            'discovery_top',
+            'discovery_top_row',
+            'major_events',
+            'major_event',
+            'featured_badge'
+          )
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+          AND c.status = 'paid'
+          AND ci.status = 'paid'
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
+        LIMIT 1
+      ) campaign_cover ON true
+
+      LEFT JOIN LATERAL (
+        SELECT cm.file_url
+        FROM campaign_media cm
         WHERE cm.event_id = e.id
           AND cm.placement_type = 'official_flyer'
           AND cm.moderation_status = 'approved'
@@ -119,7 +148,7 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         ORDER BY cm.approved_at DESC NULLS LAST, cm.created_at DESC
         LIMIT 1
       ) ofm ON true
-      
+
       WHERE e.status = 'approved'
         AND (
           e.id::text = $1
@@ -152,13 +181,11 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         id: event.id,
         slug: event.slug,
         eventCode: event.event_code,
-
         title: event.title,
         shortDescription: event.short_description,
         description: event.description,
         category: event.category,
         status: event.status,
-
         featured: Boolean(event.featured),
         isFeatured: Boolean(event.featured),
 
@@ -222,7 +249,6 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
     });
   } catch (error) {
     console.error("getPublicEventBySlug error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to load event",
