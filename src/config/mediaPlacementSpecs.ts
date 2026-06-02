@@ -20,27 +20,28 @@ export type MediaPlacementSpec = {
   note: string;
 };
 
-export const MEDIA_PLACEMENT_SPECS: Record<string, Record<string, MediaPlacementSpec>> = {
-  homepage_hero: {
-    desktop: {
-      placementType: "homepage_hero",
-      mediaSlot: "desktop",
-      label: "Homepage Hero",
-      category: "Homepage Placement",
-      location: "Top featured area of the Judah Global homepage.",
-      recommendedWidth: 1920,
-      recommendedHeight: 900,
-      minWidth: 1600,
-      minHeight: 750,
-      aspectRatio: "wide_landscape",
-      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
-      maxFileSizeMB: 8,
-      requiresMedia: true,
-      mockupShape: "hero",
-      bestFor: "Major conferences, revivals, tours, Podcast, and high-priority promotions.",
-      note: "Use a wide image with important text centered and away from the edges.",
+    export const MEDIA_PLACEMENT_SPECS: Record<string, Record<string, MediaPlacementSpec>> = {
+    homepage_hero: {
+
+      primary: {
+        placementType: "homepage_hero",
+        mediaSlot: "primary",
+        label: "Homepage Hero",
+        category: "Homepage Placement",
+        location: "Top featured area of the Judah Global homepage.",
+        recommendedWidth: 1920,
+        recommendedHeight: 900,
+        minWidth: 1600,
+        minHeight: 750,
+        aspectRatio: "wide_landscape",
+        allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+        maxFileSizeMB: 8,
+        requiresMedia: true,
+        mockupShape: "hero",
+        bestFor: "Major conferences, revivals, tours, podcast, and high-priority promotions.",
+        note: "Use a wide image with important text centered and away from the edges.",
+      },
     },
-  },
   homepage_top: {
   primary: {
     placementType: "homepage_top",
