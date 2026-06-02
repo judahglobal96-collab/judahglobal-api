@@ -386,17 +386,35 @@ export const approveMediaReview = async (req: Request, res: Response) => {
       );
 
       if (campaignMediaCheck.rows.length > 0) {
+
+      /*
+      |--------------------------------------------------------------------------
+| Campaign Media Approval
+|--------------------------------------------------------------------------
+| When campaign media is approved by an admin, it must immediately
+| become eligible for public rendering.
+|
+| Public placement queries require:
+|   moderation_status = 'approved'
+|   lifecycle_status = 'active'
+|   deployment_status = 'live'
+|   is_current_live = true
+|--------------------------------------------------------------------------
+*/
         const result = await db.query(
           `
-          UPDATE campaign_media
-          SET
-            moderation_status = 'approved',
-            rejection_reason = NULL,
-            approved_at = NOW(),
-            updated_at = NOW()
-          WHERE id = $1::uuid
-          RETURNING *;
-          `,
+        UPDATE campaign_media
+        SET
+          moderation_status = 'approved',
+          rejection_reason = NULL,
+          approved_at = NOW(),
+          lifecycle_status = 'active',
+          deployment_status = 'live',
+          is_current_live = true,
+          updated_at = NOW()
+        WHERE id = $1::uuid
+        RETURNING *;
+                  `,
           [mediaId]
         );
 
