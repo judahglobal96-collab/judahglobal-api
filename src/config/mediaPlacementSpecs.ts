@@ -21,10 +21,10 @@ export type MediaPlacementSpec = {
 };
 
     export const MEDIA_PLACEMENT_SPECS: Record<string, Record<string, MediaPlacementSpec>> = {
-    homepage_hero: {
+    hero: {
 
       primary: {
-        placementType: "homepage_hero",
+        placementType: "hero",
         mediaSlot: "primary",
         label: "Homepage Hero",
         category: "Homepage Placement",

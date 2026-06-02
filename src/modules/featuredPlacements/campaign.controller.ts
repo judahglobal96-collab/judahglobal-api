@@ -68,7 +68,7 @@ function getMediaSlot(placementType: PlacementType): string {
   const normalized = normalizePlacementType(placementType);
 
   if (normalized === "official_flyer") return "primary";
-  if (normalized === "hero") return "desktop";
+  if (normalized === "hero") return "primary";
   if (normalized === "homepage_top") return "primary";
   if (normalized === "discovery_top") return "primary";
   if (normalized === "featured_badge") return "primary";
@@ -418,7 +418,7 @@ export async function uploadCampaignPromoMediaController(
       ((file as any).filename
        ? `/uploads/campaigns/${(file as any).filename}`
        : null);
-       
+
           console.log("CAMPAIGN MEDIA PAYLOAD", {
       campaignId: String(campaignId).trim(),
       promoPurchaseId: null,
