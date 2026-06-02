@@ -415,9 +415,10 @@ export async function uploadCampaignPromoMediaController(
       (file as any).location ||
       (file as any).secure_url ||
       (file as any).url ||
-      (file as any).path ||
-      ((file as any).filename ? `/uploads/${(file as any).filename}` : null);
-
+      ((file as any).filename
+       ? `/uploads/campaigns/${(file as any).filename}`
+       : null);
+       
           console.log("CAMPAIGN MEDIA PAYLOAD", {
       campaignId: String(campaignId).trim(),
       promoPurchaseId: null,
