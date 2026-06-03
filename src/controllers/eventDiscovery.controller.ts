@@ -539,12 +539,14 @@ export async function getMajorEvents(req: Request, res: Response) {
           AND (
             (ci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
           )::date
-      ORDER BY
-        e.event_id,
-        cm.approved_at DESC NULLS LAST,
-        cm.updated_at DESC,
-        e.starts_at_utc ASC
-      `,
+        ORDER BY
+          e.event_id,
+          cm.approved_at DESC NULLS LAST,
+          cm.updated_at DESC,
+          e.starts_at_utc ASC
+        LIMIT $1
+        OFFSET $2      
+        `,
       [limit, offset, regionCode]
     );
 
