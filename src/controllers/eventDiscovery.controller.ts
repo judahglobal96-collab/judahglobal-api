@@ -500,7 +500,7 @@ export async function getMajorEvents(req: Request, res: Response) {
     const total = countResult.rows[0]?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
-    const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id", `$3::text}'`);
+    const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id", "$3::text");
 
     const result = await db.query(
       `
