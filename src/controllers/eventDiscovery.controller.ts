@@ -257,6 +257,7 @@ async function getPromoPlacementsByTypes(
       AND c.status = 'paid'
       AND ci.status = 'paid'
       AND (${buildSubmissionNotExpiredSql("e.event_id")})
+      AND ci.region_code = $3::text
       AND CURRENT_DATE BETWEEN
         (ci.placement_date AT TIME ZONE 'UTC')::date
         AND (
@@ -270,7 +271,8 @@ async function getPromoPlacementsByTypes(
       e.starts_at_utc ASC
     LIMIT $2
     `,
-    [placementTypes, limit, region ? `%${region}%` : null]
+[
+  placementTypes, limit, toRegionCode(region || "United States")]
   );
 
   return result.rows;
@@ -472,13 +474,6 @@ export async function getMajorEvents(req: Request, res: Response) {
       FROM ad_campaign_items ci
       INNER JOIN ad_campaigns c
         ON c.id = ci.campaign_id
-      INNER JOIN campaign_media cm
-        ON cm.campaign_id = c.id
-        AND cm.placement_type = ci.placement_type
-        AND cm.moderation_status = 'approved'
-        AND cm.lifecycle_status = 'active'
-        AND cm.deployment_status = 'live'
-        AND cm.is_current_live = true
       INNER JOIN event_discovery_index e
         ON e.event_id = c.linked_event_id
         AND e.status = 'approved'
