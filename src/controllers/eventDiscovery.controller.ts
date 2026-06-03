@@ -124,7 +124,7 @@ function buildDiscoveryFilters(req: Request, useDefaultCountry = true) {
 
   const majorEventExistsSql = buildMajorEventExistsSql("e.event_id", `'${regionCode}'`);
   const featuredBadgeExistsSql =   buildFeaturedBadgeExistsSql("e.event_id",  `'${regionCode}'`);
-  
+
   const whereParts: string[] = [
     `e.status = 'approved'`,
     `(${buildActiveEventSql("e")})`,
@@ -467,8 +467,8 @@ export async function getMajorEvents(req: Request, res: Response) {
     const page = parsePositiveInt(req.query.page, 1);
     const limit = parsePositiveInt(req.query.limit, 12);
     const offset = (page - 1) * limit;
-    const region = String(req.query.region || "").trim();
-    const regionParam = region ? `%${region}%` : null;
+    const region = String(req.query.region || req.query.country || "").trim();
+    const regionCode = toRegionCode(region || "United States");
 
     const countQuery = `
       SELECT COUNT(DISTINCT e.event_id)::int AS total
@@ -490,9 +490,8 @@ export async function getMajorEvents(req: Request, res: Response) {
         AND c.status = 'paid'
         AND ci.status = 'paid'
         AND (${buildSubmissionNotExpiredSql("e.event_id")})
-        AND (
-          $1::text IS NULL
-          OR e.country ILIKE $1::text
+        AND 
+          ci.region_code = $1::text
         )
         AND CURRENT_DATE BETWEEN
           (ci.placement_date AT TIME ZONE 'UTC')::date
@@ -501,11 +500,11 @@ export async function getMajorEvents(req: Request, res: Response) {
           )::date
     `;
 
-    const countResult = await db.query(countQuery, [regionParam]);
+    const countResult = await db.query(countQuery, [regionCode]);
     const total = countResult.rows[0]?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
-    const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
+    const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id", `'${regionCode}'`);
 
     const result = await db.query(
       `
@@ -538,10 +537,7 @@ export async function getMajorEvents(req: Request, res: Response) {
         AND c.status = 'paid'
         AND ci.status = 'paid'
         AND (${buildSubmissionNotExpiredSql("e.event_id")})
-        AND (
-          $3::text IS NULL
-          OR e.country ILIKE $3::text
-        )
+        AND ci.region_code = $3::text
         AND CURRENT_DATE BETWEEN
           (ci.placement_date AT TIME ZONE 'UTC')::date
           AND (
@@ -552,10 +548,8 @@ export async function getMajorEvents(req: Request, res: Response) {
         cm.approved_at DESC NULLS LAST,
         cm.updated_at DESC,
         e.starts_at_utc ASC
-      LIMIT $1
-      OFFSET $2
       `,
-      [limit, offset, regionParam]
+      [limit, offset, regionCode]
     );
 
     return res.json({
