@@ -257,10 +257,6 @@ async function getPromoPlacementsByTypes(
       AND c.status = 'paid'
       AND ci.status = 'paid'
       AND (${buildSubmissionNotExpiredSql("e.event_id")})
-      AND (
-        $3::text IS NULL
-        OR e.country ILIKE $3::text
-      )
       AND CURRENT_DATE BETWEEN
         (ci.placement_date AT TIME ZONE 'UTC')::date
         AND (
@@ -363,7 +359,8 @@ export async function getFeaturedEvents(_req: Request, res: Response) {
           AND ci.status = 'paid'
         ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
         LIMIT 1
-      ) featured_cm ON true
+      ) 
+        featured_cm ON true
       LEFT JOIN event_sponsors sp
         ON sp.event_id = e.event_id
       WHERE e.status = 'approved'
