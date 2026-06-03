@@ -53,8 +53,11 @@ function buildSubmissionNotExpiredSql(eventIdReference = "e.event_id") {
   `;
 }
 
-function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
-  return `
+  function buildFeaturedBadgeExistsSql(
+    eventIdReference = "e.event_id",
+    regionCodeReference = "'USA'"
+  ) {
+    return `
     EXISTS (
       SELECT 1
       FROM ad_campaign_items fci
@@ -64,6 +67,7 @@ function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
       AND fci.placement_type = 'featured_badge'
       AND fc.status = 'paid'
       AND fci.status = 'paid'
+      AND fci.region_code = ${regionCodeReference}
       AND CURRENT_DATE BETWEEN
         (fci.placement_date AT TIME ZONE 'UTC')::date
         AND (
@@ -73,15 +77,28 @@ function buildFeaturedBadgeExistsSql(eventIdReference = "e.event_id") {
   `;
 }
 
-function buildMajorEventExistsSql(eventIdReference = "e.event_id") {
-  return `
-    (
-      EXISTS (
-        SELECT 1
-        FROM ad_campaign_items mci
-        INNER JOIN ad_campaigns mc
-          ON mc.id = mci.campaign_id
-        WHERE mc.linked_event_id = ${eventIdReference}
+function toRegionCode(country?: string | null) {
+  const value = String(country || "").trim().toLowerCase();
+
+  if (value === "canada") return "CANADA";
+  if (value === "united states" || value === "usa" || value === "us") return "USA";
+  if (value === "africa") return "AFRICA";
+  if (value === "europe") return "EUROPE";
+
+  return "USA";
+}
+
+  function buildMajorEventExistsSql(
+    eventIdReference = "e.event_id",
+    regionCodeReference = "'USA'"
+  ) {
+    return `
+    EXISTS (
+      SELECT 1
+      FROM ad_campaign_items mci
+      INNER JOIN ad_campaigns mc
+        ON mc.id = mci.campaign_id
+      WHERE mc.linked_event_id = ${eventIdReference}
         AND mci.placement_type IN ('major_events', 'major_event')
         AND mc.status = 'paid'
         AND mci.status = 'paid'
@@ -90,18 +107,10 @@ function buildMajorEventExistsSql(eventIdReference = "e.event_id") {
           AND (
             (mci.placement_date AT TIME ZONE 'UTC')::date + INTERVAL '20 days'
           )::date
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM event_promotions ep
-        WHERE ep.event_id = ${eventIdReference}
-        AND ep.placement_type IN ('major_event', 'major_events')
-        AND ep.status = 'active'
-        AND ep.expires_at > NOW()
-      )
+        AND mci.region_code = ${regionCodeReference}
     )
-  `;
-}
+    `;
+  }
 
 function buildDiscoveryFilters(req: Request, useDefaultCountry = true) {
   const search = getSearchTerm(req);
@@ -109,11 +118,13 @@ function buildDiscoveryFilters(req: Request, useDefaultCountry = true) {
   const stateRegion = getFilterValue(req.query.state_region);
   const country =
     getFilterValue(req.query.country) || (useDefaultCountry ? "United States" : "");
+  const regionCode = toRegionCode(country);
   const category = getFilterValue(req.query.category);
   const majorEventOnly = getBooleanQueryParam(req.query.major_event);
 
-  const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
-
+  const majorEventExistsSql = buildMajorEventExistsSql("e.event_id", `'${regionCode}'`);
+  const featuredBadgeExistsSql =   buildFeaturedBadgeExistsSql("e.event_id",  `'${regionCode}'`);
+  
   const whereParts: string[] = [
     `e.status = 'approved'`,
     `(${buildActiveEventSql("e")})`,
