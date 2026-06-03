@@ -489,7 +489,6 @@ export async function getMajorEvents(req: Request, res: Response) {
         AND (${buildSubmissionNotExpiredSql("e.event_id")})
         AND 
           ci.region_code = $1::text
-        )
         AND CURRENT_DATE BETWEEN
           (ci.placement_date AT TIME ZONE 'UTC')::date
           AND (
