@@ -549,6 +549,10 @@ export async function getMajorEvents(req: Request, res: Response) {
         `,
       [limit, offset, regionCode]
     );
+console.log("MAJOR EVENTS region:", region);
+console.log("MAJOR EVENTS regionCode:", regionCode);
+console.log("MAJOR EVENTS total:", total);
+console.log("MAJOR EVENTS rows:", result.rows.length, result.rows);
 
     return res.json({
       success: true,
