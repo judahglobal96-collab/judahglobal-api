@@ -281,16 +281,20 @@ async function getPromoPlacementsByTypes(
 export async function getAllDiscoveredEvents(req: Request, res: Response) {
   try {
     const result = await db.query(`
-      SELECT
-        event_id,
-        title,
-        city,
-        starts_at_utc
-      FROM event_discovery_index
-      WHERE status = 'approved'
-      AND ${buildActiveEventSql("event_discovery_index")}
-      LIMIT 5
-    `);
+    SELECT
+      edi.event_id,
+      edi.title,
+      edi.city,
+      edi.starts_at_utc,
+      COALESCE(edi.is_featured, false) AS is_featured,
+      COALESCE(es.is_major_event, false) AS is_major_event
+    FROM event_discovery_index edi
+    LEFT JOIN event_submissions es
+      ON es.id = edi.event_id
+    WHERE edi.status = 'approved'
+      AND ${buildActiveEventSql("edi")}
+    LIMIT 5
+  `);
 
     return res.json({
       success: true,
