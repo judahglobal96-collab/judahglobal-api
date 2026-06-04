@@ -795,9 +795,15 @@ export async function reserveCampaign(input: ReserveCampaignInput) {
       if (Number.isNaN(placementDateValue.getTime())) {
         throw new Error(`Invalid placement date for ${placementType}.`);
       }
+  console.log("RAW CAMPAIGN ITEM", {
+  placementType,
+  rawRegionCode: rawItem.regionCode,
+  normalizedRegionCode: normalizeRegionCode(rawItem.regionCode),
+});
 
       const campaignItemInsert = await client.query(
         `
+        
         INSERT INTO ad_campaign_items (
           campaign_id,
           inventory_id,

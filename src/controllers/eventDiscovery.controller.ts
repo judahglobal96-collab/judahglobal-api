@@ -511,6 +511,13 @@ export async function getMajorEvents(req: Request, res: Response) {
       FROM ad_campaign_items ci
       INNER JOIN ad_campaigns c
         ON c.id = ci.campaign_id
+      INNER JOIN campaign_media cm
+        ON cm.campaign_id = c.id
+        AND cm.placement_type = ci.placement_type
+        AND cm.moderation_status = 'approved'
+        AND cm.lifecycle_status = 'active'
+        AND cm.deployment_status = 'live'
+        AND cm.is_current_live = true
       INNER JOIN event_discovery_index e
         ON e.event_id = c.linked_event_id
         AND e.status = 'approved'
