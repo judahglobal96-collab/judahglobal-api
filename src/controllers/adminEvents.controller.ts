@@ -841,9 +841,10 @@ export async function approveEvent(req: Request, res: Response) {
       event.id,
     ]);
 
-    const safeStartDate = event.start_date
-      ? new Date(event.start_date).toISOString().slice(0, 10)
-      : null;
+    const safeStartDate =
+      event.start_date ||
+      event.occurrence_date ||
+      null;
 
     const safeEndDate = event.end_date
       ? new Date(event.end_date).toISOString().slice(0, 10)
