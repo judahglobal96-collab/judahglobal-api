@@ -66,7 +66,20 @@ export async function getDiscoveryEvents(req: Request, res: Response) {
         country,
         category_key AS category,
         sponsor_name,
-        is_featured,
+(
+        COALESCE(is_featured, false)
+        OR COALESCE((
+          SELECT es.featured OR es.has_featured_badge
+          FROM event_submissions es
+          WHERE es.id = event_discovery_index.event_id
+        ), false)
+      ) AS is_featured,
+      COALESCE((
+        SELECT es.is_major_event
+        FROM event_submissions es
+        WHERE es.id = event_discovery_index.event_id
+      ), false) AS is_major_event,
+
         starts_at_utc,
         ends_at_utc,
         timezone,
