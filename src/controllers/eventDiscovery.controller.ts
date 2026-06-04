@@ -515,7 +515,7 @@ export async function getMajorEvents(req: Request, res: Response) {
       FROM ad_campaign_items ci
       INNER JOIN ad_campaigns c
         ON c.id = ci.campaign_id
-      INNER JOIN campaign_media cm
+      LEFT JOIN campaign_media cm
         ON cm.campaign_id = c.id
         AND cm.placement_type = ci.placement_type
         AND cm.moderation_status = 'approved'
