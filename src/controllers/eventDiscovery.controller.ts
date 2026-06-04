@@ -745,6 +745,7 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
 
 export async function indexEventForDiscovery(req: Request, res: Response) {
   try {
+    
     const eventIdParam = req.params.eventId;
     const eventId = Array.isArray(eventIdParam) ? eventIdParam[0] : eventIdParam;
 
@@ -794,7 +795,12 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
 
     const event = joinedResult.rows[0];
 
-    if (!event.title) {
+    const occurrenceDate =
+      event.start_date ||
+      event.occurrence_date ||
+      null;
+  
+  if (!event.title) {
       return res.status(500).json({ error: "Missing event title" });
     }
 
@@ -893,7 +899,7 @@ export async function indexEventForDiscovery(req: Request, res: Response) {
         event.country,
         event.country_code,
         event.schedule_timezone,
-        event.start_date,
+        occurrenceDate,
         normalizedStartTime,
         event.end_date,
         normalizedEndTime,
