@@ -661,7 +661,7 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
       SELECT
         ${buildEventCardSelectSql({
           mediaExpression:
-            "COALESCE(media.file_url, campaign_cover.file_url, official_flyer.file_url)",
+            "COALESCE(media.file_url, campaign_cover.file_url)",
           isMajorEventExpression: `(${majorEventExistsSql})`,
           isFeaturedExpression: `(COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql})`,
         })},
