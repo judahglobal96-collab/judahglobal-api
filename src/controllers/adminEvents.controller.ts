@@ -841,15 +841,18 @@ export async function approveEvent(req: Request, res: Response) {
       event.id,
     ]);
 
-      const safeStartDate = event.start_date
-        ? String(event.start_date).slice(0, 10)
-        : event.occurrence_date
-          ? String(event.occurrence_date).slice(0, 10)
-          : null;
+    const toPgDate = (value: any) => {
+      if (!value) return null;
+      return new Date(value).toISOString().slice(0, 10);
+    };
 
-      const safeEndDate = event.end_date
-        ? String(event.end_date).slice(0, 10)
-        : safeStartDate;
+    const safeStartDate =
+      toPgDate(event.start_date) ||
+      toPgDate(event.occurrence_date);
+
+    const safeEndDate =
+      toPgDate(event.end_date) ||
+      safeStartDate;
 
       const normalizedStartTime = event.start_time
         ? String(event.start_time).split(".")[0].padEnd(8, ":00")
