@@ -78,7 +78,7 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         em.moderation_status AS media_status,
         em.is_primary AS media_primary,
 
-        ofm.file_url AS official_flyer_url
+        official_flyer.file_url AS official_flyer_url
 
       FROM events e
 
@@ -136,31 +136,22 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         LIMIT 1
       ) campaign_cover ON true
 
-      LEFT JOIN LATERAL (
-        SELECT cm.file_url
-        FROM campaign_media cm
-        WHERE cm.event_id = e.id
-          AND cm.placement_type = 'official_flyer'
-          AND cm.moderation_status = 'approved'
-          AND cm.lifecycle_status = 'active'
-          AND cm.deployment_status = 'live'
-          AND cm.is_current_live = true
-        ORDER BY cm.approved_at DESC NULLS LAST, cm.created_at DESC
-        LIMIT 1
-      ) ofm ON true
-
-      WHERE e.status = 'approved'
-        AND (
-          e.id::text = $1
-          OR e.slug = $1
-          OR e.event_code = $1
-        )
-        AND (
-          e.expires_at IS NULL
-          OR e.expires_at > NOW()
-        )
-      LIMIT 1
-      `,
+        LEFT JOIN LATERAL (
+          SELECT cm.file_url
+          FROM campaign_media cm
+          INNER JOIN ad_campaigns c
+            ON c.id = cm.campaign_id
+          WHERE c.linked_event_id = e.id
+            AND cm.placement_type = 'official_flyer'
+            AND cm.moderation_status = 'approved'
+            AND cm.lifecycle_status = 'active'
+            AND cm.deployment_status = 'live'
+            AND cm.is_current_live = true
+            AND c.status = 'paid'
+          ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
+          LIMIT 1
+        ) official_flyer ON true
+       `,
       [slug]
     );
 
