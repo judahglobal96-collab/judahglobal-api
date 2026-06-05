@@ -136,22 +136,39 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         LIMIT 1
       ) campaign_cover ON true
 
-        LEFT JOIN LATERAL (
-          SELECT cm.file_url
-          FROM campaign_media cm
-          INNER JOIN ad_campaigns c
-            ON c.id = cm.campaign_id
-          WHERE c.linked_event_id = e.id
-            AND cm.placement_type = 'official_flyer'
-            AND cm.moderation_status = 'approved'
-            AND cm.lifecycle_status = 'active'
-            AND cm.deployment_status = 'live'
-            AND cm.is_current_live = true
-            AND c.status = 'paid'
-          ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
-          LIMIT 1
-        ) official_flyer ON true
-       `,
+      LEFT JOIN LATERAL (
+        SELECT cm.file_url
+        FROM campaign_media cm
+        INNER JOIN ad_campaigns c
+          ON c.id = cm.campaign_id
+        INNER JOIN ad_campaign_items ci
+          ON ci.campaign_id = c.id
+          AND ci.placement_type = cm.placement_type
+        WHERE c.linked_event_id = e.id
+          AND cm.placement_type = 'official_flyer'
+          AND cm.moderation_status = 'approved'
+          AND cm.lifecycle_status = 'active'
+          AND cm.deployment_status = 'live'
+          AND cm.is_current_live = true
+          AND c.status = 'paid'
+          AND ci.status = 'paid'
+        ORDER BY cm.approved_at DESC NULLS LAST, cm.updated_at DESC
+        LIMIT 1
+      ) official_flyer ON true
+
+      WHERE e.status = 'approved'
+        AND (
+          e.id::text = $1
+          OR e.slug = $1
+          OR e.event_code = $1
+        )
+        AND (
+          e.expires_at IS NULL
+          OR e.expires_at > NOW()
+        )
+
+      LIMIT 1
+      `,
       [slug]
     );
 
@@ -189,7 +206,6 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
 
         venueName: event.venue_name || null,
         venueAddress: venueAddress || null,
-
         sponsorName: event.sponsor_name || null,
         contactEmail: event.contact_email || null,
         country: event.country || null,
