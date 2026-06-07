@@ -27,7 +27,7 @@ const router = Router();
  * &country=United States
  * &category=Concert
  */
-router.get("/", getAllDiscoveredEvents);
+router.get("/", searchDiscoveredEvents);
 
 
  router.get("/homepage-promos", getHomepagePromos);

@@ -293,7 +293,7 @@ export async function getAllDiscoveredEvents(req: Request, res: Response) {
         ON es.id = edi.event_id
       WHERE edi.status = 'approved'
         AND ${buildActiveEventSql("edi")}
-      LIMIT 5
+      LIMIT 30
     `);
 
     return res.json({
@@ -570,6 +570,10 @@ export async function searchDiscoveredEvents(req: Request, res: Response) {
   console.log("SEARCH DISCOVERED EVENTS HIT", req.query);
 
   try {
+    const page = parsePositiveInt(req.query.page, 1);
+    const limit = Math.min(parsePositiveInt(req.query.limit, 20), 20);
+    const offset = (page - 1) * limit;
+
     const {
       whereClause,
       params,
@@ -583,6 +587,18 @@ export async function searchDiscoveredEvents(req: Request, res: Response) {
 
     const featuredBadgeExistsSql = buildFeaturedBadgeExistsSql("e.event_id");
     const majorEventExistsSql = buildMajorEventExistsSql("e.event_id");
+
+    const countResult = await db.query(
+      `
+      SELECT COUNT(DISTINCT e.event_id)::int AS total
+      FROM event_discovery_index e
+      WHERE ${whereClause}
+      `,
+      params
+    );
+
+    const total = countResult.rows[0]?.total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     const result = await db.query(
       `
@@ -627,12 +643,18 @@ export async function searchDiscoveredEvents(req: Request, res: Response) {
         (${majorEventExistsSql}) DESC,
         (COALESCE(e.is_featured, false) OR ${featuredBadgeExistsSql}) DESC,
         e.starts_at_utc ASC
+      LIMIT $${params.length + 1}
+      OFFSET $${params.length + 2}
       `,
-      params
+      [...params, limit, offset]
     );
 
     return res.json({
       success: true,
+      page,
+      limit,
+      total,
+      total_pages: totalPages,
       filters: {
         search,
         city,
