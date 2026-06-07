@@ -694,6 +694,7 @@ export async function getDiscoveredEventById(req: Request, res: Response) {
         })},
         campaign_cover.file_url AS campaign_media_url,
         sp.contact_email,
+        sp.website_url,
         loc.venue_name,
         loc.address_line_1 AS address_line_1,
         loc.city AS location_city,
