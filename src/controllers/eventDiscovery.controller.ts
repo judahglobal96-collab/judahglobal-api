@@ -567,6 +567,8 @@ export async function getMajorEvents(req: Request, res: Response) {
 }
 
 export async function searchDiscoveredEvents(req: Request, res: Response) {
+  console.log("SEARCH DISCOVERED EVENTS HIT", req.query);
+
   try {
     const {
       whereClause,
