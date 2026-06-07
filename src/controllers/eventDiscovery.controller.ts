@@ -77,14 +77,17 @@ function buildFeaturedBadgeExistsSql(
   `;
 }
 
-function toRegionCode(country?: string | null) {
-  const value = String(country || "").trim().toLowerCase();
-  if (value === "canada") return "CANADA";
-  if (value === "united states" || value === "usa" || value === "us") return "USA";
-  if (value === "africa") return "AFRICA";
-  if (value === "europe") return "EUROPE";
-  return "USA";
-}
+  function toRegionCode(country?: string | null) {
+    const value = String(country || "").trim().toLowerCase();
+
+    if (value === "canada" || value === "ca") return "CANADA";
+    if (value === "united kingdom" || value === "uk" || value === "gb" || value === "great britain") return "UK";
+    if (value === "united states" || value === "usa" || value === "us") return "USA";
+    if (value === "africa") return "AFRICA";
+    if (value === "europe") return "EUROPE";
+
+    return "USA";
+  }
 
 function buildMajorEventExistsSql(
   eventIdReference = "e.event_id",
