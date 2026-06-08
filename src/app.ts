@@ -137,7 +137,8 @@ app.get("/db-health", async (_req, res) => {
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://judah-global-frontend-production.up.railway.app"
+    "https://judah-global-frontend-production.up.railway.app",
+    "https://app.judahglobal.org"
   ],
   credentials: true,
 }));
