@@ -56,16 +56,16 @@ app.use((req, _res, next) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 const allowedOrigins = [
-  "https://www.judahglobal.org",
+  "http://localhost:5173",
   "https://judahglobal.org",
+  "https://www.judahglobal.org",
+  "https://app.judahglobal.org",
   "https://judah-global-frontend-production.up.railway.app",
-  "http://localhost:3000",
-  "http://localhost:5173"
 ];
 
 app.use(cors({
   origin: allowedOrigins,
-  credentials: true
+  credentials: true,
 }));
 
 app.options("*", cors({
