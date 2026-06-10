@@ -3,6 +3,8 @@ import {
   registerPlatformUser,
   loginPlatformUser,
   verifyPlatformUserOtp,
+  forgotPlatformPassword,
+  resetPlatformPassword,
   getMe,
   getMyPlatformProfile,
   updateMyPlatformProfile,
@@ -14,9 +16,12 @@ const router = Router();
 router.post('/register', registerPlatformUser);
 router.post('/login', loginPlatformUser);
 router.post('/verify-otp', verifyPlatformUserOtp);
-router.get('/me', requireAuth, getMe);              // lightweight auth check
-router.get('/me/profile', requireAuth, getMyPlatformProfile); // full profile
-router.patch('/me', requireAuth, updateMyPlatformProfile);
 
+router.post('/forgot-password', forgotPlatformPassword);
+router.post('/reset-password', resetPlatformPassword);
+
+router.get('/me', requireAuth, getMe);
+router.get('/me/profile', requireAuth, getMyPlatformProfile);
+router.patch('/me', requireAuth, updateMyPlatformProfile);
 
 export default router;

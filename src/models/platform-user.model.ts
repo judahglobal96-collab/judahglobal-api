@@ -16,6 +16,8 @@ export interface PlatformUser {
   two_factor_enabled: boolean;
   two_factor_code: string | null;
   two_factor_expires_at: string | null;
+  password_reset_token_hash: string | null;
+  password_reset_expires_at: string | null;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
@@ -90,8 +92,9 @@ export async function setTwoFactorCode(
   await db.query(
     `
     UPDATE platform_users
-    SET two_factor_code = $2,
-        two_factor_expires_at = $3
+    SET
+      two_factor_code = $2,
+      two_factor_expires_at = $3
     WHERE id = $1
     `,
     [userId, code, expiresAt]
@@ -102,9 +105,10 @@ export async function clearTwoFactorCode(userId: string) {
   await db.query(
     `
     UPDATE platform_users
-    SET two_factor_code = NULL,
-        two_factor_expires_at = NULL,
-        last_login_at = NOW()
+    SET
+      two_factor_code = NULL,
+      two_factor_expires_at = NULL,
+      last_login_at = NOW()
     WHERE id = $1
     `,
     [userId]
@@ -120,6 +124,75 @@ export async function verifyPlatformUserEmail(userId: string) {
     `,
     [userId]
   );
+}
+
+export async function setPasswordResetToken(
+  userId: string,
+  tokenHash: string,
+  expiresAt: string
+) {
+  await db.query(
+    `
+    UPDATE platform_users
+    SET
+      password_reset_token_hash = $2,
+      password_reset_expires_at = $3,
+      updated_at = NOW()
+    WHERE id = $1
+    `,
+    [userId, tokenHash, expiresAt]
+  );
+}
+
+export async function findPlatformUserByPasswordResetTokenHash(
+  tokenHash: string
+) {
+  const result = await db.query(
+    `
+    SELECT *
+    FROM platform_users
+    WHERE password_reset_token_hash = $1
+    LIMIT 1
+    `,
+    [tokenHash]
+  );
+
+  return result.rows[0] as PlatformUser | null;
+}
+
+export async function clearPasswordResetToken(userId: string) {
+  await db.query(
+    `
+    UPDATE platform_users
+    SET
+      password_reset_token_hash = NULL,
+      password_reset_expires_at = NULL,
+      updated_at = NOW()
+    WHERE id = $1
+    `,
+    [userId]
+  );
+}
+
+export async function updatePlatformUserPassword(
+  userId: string,
+  passwordHash: string
+) {
+  const result = await db.query(
+    `
+    UPDATE platform_users
+    SET
+      password_hash = $2,
+      password_reset_token_hash = NULL,
+      password_reset_expires_at = NULL,
+      updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+    `,
+    [userId, passwordHash]
+  );
+
+  return result.rows[0] as PlatformUser | null;
 }
 
 export async function updatePlatformUserProfile(
@@ -187,8 +260,9 @@ export async function updatePlatformUserRole(id: string, role: string) {
   const result = await db.query(
     `
     UPDATE platform_users
-    SET role = $2,
-        updated_at = NOW()
+    SET
+      role = $2,
+      updated_at = NOW()
     WHERE id = $1
     RETURNING
       id,
@@ -209,8 +283,9 @@ export async function updatePlatformUserStatus(id: string, isActive: boolean) {
   const result = await db.query(
     `
     UPDATE platform_users
-    SET is_active = $2,
-        updated_at = NOW()
+    SET
+      is_active = $2,
+      updated_at = NOW()
     WHERE id = $1
     RETURNING
       id,

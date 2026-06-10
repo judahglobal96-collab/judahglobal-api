@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import {
   createPlatformUser,
   findPlatformUserByEmail,
@@ -9,6 +10,10 @@ import {
   clearTwoFactorCode,
   verifyPlatformUserEmail,
   updatePlatformUserProfile,
+  setPasswordResetToken,
+  findPlatformUserByPasswordResetTokenHash,
+  updatePlatformUserPassword,
+  clearPasswordResetToken,
 } from '../models/platform-user.model';
 
 function generateOtpCode(): string {
@@ -19,6 +24,16 @@ function getOtpExpiry(minutes = 10): string {
   const expires = new Date();
   expires.setMinutes(expires.getMinutes() + minutes);
   return expires.toISOString();
+}
+
+function getPasswordResetExpiry(minutes = 60): string {
+  const expires = new Date();
+  expires.setMinutes(expires.getMinutes() + minutes);
+  return expires.toISOString();
+}
+
+function hashResetToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 function signJwt(user: { id: string; email: string; role: string }) {
@@ -54,20 +69,14 @@ export async function registerPlatformUser(req: Request, res: Response) {
       password,
     } = req.body;
 
-    if (
-      !firstName ||
-      !lastName ||
-      !dobMonth ||
-      !dobYear ||
-      !email ||
-      !password
-    ) {
+    if (!firstName || !lastName || !dobMonth || !dobYear || !email || !password) {
       return res.status(400).json({
         message: 'Missing required fields.',
       });
     }
 
     const existingUser = await findPlatformUserByEmail(email);
+
     if (existingUser) {
       return res.status(409).json({
         message: 'An account with that email already exists.',
@@ -125,6 +134,7 @@ export async function loginPlatformUser(req: Request, res: Response) {
     console.log('[PLATFORM LOGIN] Attempting login for email:', email);
 
     let user;
+
     try {
       user = await findPlatformUserByEmail(email);
       console.log('[PLATFORM LOGIN] DB query completed. User found:', !!user);
@@ -170,12 +180,14 @@ export async function loginPlatformUser(req: Request, res: Response) {
     });
   } catch (error) {
     const err = error as Error;
+
     console.error('[PLATFORM LOGIN] loginPlatformUser error:', {
       message: err.message,
       stack: err.stack,
       name: err.name,
       email: req.body?.email,
     });
+
     return res.status(500).json({
       message: 'Login failed.',
     });
@@ -249,6 +261,111 @@ export async function verifyPlatformUserOtp(req: Request, res: Response) {
     console.error('verifyPlatformUserOtp error:', error);
     return res.status(500).json({
       message: 'OTP verification failed.',
+    });
+  }
+}
+
+export async function forgotPlatformPassword(req: Request, res: Response) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        message: 'Email is required.',
+      });
+    }
+
+    const genericMessage =
+      'If an account exists for that email, a password reset link has been sent.';
+
+    const user = await findPlatformUserByEmail(email);
+
+    if (!user) {
+      return res.status(200).json({
+        message: genericMessage,
+      });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = hashResetToken(resetToken);
+    const expiresAt = getPasswordResetExpiry(60);
+
+    await setPasswordResetToken(user.id, resetTokenHash, expiresAt);
+
+    const appBaseUrl =
+      process.env.APP_BASE_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'https://app.judahglobal.org';
+
+    const resetUrl = `${appBaseUrl}/reset-password?token=${resetToken}`;
+
+    console.log('[PLATFORM PASSWORD RESET LINK]', {
+      email: user.email,
+      resetUrl,
+      expiresAt,
+    });
+
+    return res.status(200).json({
+      message: genericMessage,
+    });
+  } catch (error) {
+    console.error('forgotPlatformPassword error:', error);
+    return res.status(500).json({
+      message: 'Password reset request failed.',
+    });
+  }
+}
+
+export async function resetPlatformPassword(req: Request, res: Response) {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        message: 'Reset token and new password are required.',
+      });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters.',
+      });
+    }
+
+    const tokenHash = hashResetToken(token);
+    const user = await findPlatformUserByPasswordResetTokenHash(tokenHash);
+
+    if (!user || !user.password_reset_expires_at) {
+      return res.status(400).json({
+        message: 'Invalid or expired password reset token.',
+      });
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(user.password_reset_expires_at);
+
+    if (now > expiresAt) {
+      await clearPasswordResetToken(user.id);
+
+      return res.status(400).json({
+        message: 'Invalid or expired password reset token.',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    await updatePlatformUserPassword(user.id, passwordHash);
+    await clearPasswordResetToken(user.id);
+    await clearTwoFactorCode(user.id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password updated successfully.',
+    });
+  } catch (error) {
+    console.error('resetPlatformPassword error:', error);
+    return res.status(500).json({
+      message: 'Password reset failed.',
     });
   }
 }
