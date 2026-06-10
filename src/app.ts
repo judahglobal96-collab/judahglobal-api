@@ -191,7 +191,9 @@ app.get("/debug/uploads", (_req, res) => {
 app.get("/", (_req, res) => {
   res.send("Judah Global API running");
 });
-
+app.get("/api/v1/test-payments", (req, res) => {
+  res.json({ success: true });
+});
 app.use("/api/v1/event-payments", eventPaymentsRoutes);
 app.use("/api/v1/event-submissions", eventSubmissionRoutes);
 app.use("/api/v1/events", eventDiscoveryRoutes);
