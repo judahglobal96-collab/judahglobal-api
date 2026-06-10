@@ -6,8 +6,11 @@ import {
 } from "./eventPayments.controller";
 
 import { requireAuth } from "../../middleware/auth.middleware";
+import { getEventPayments } from "../../controllers/adminEventPayments.controller";
 
 const router = Router();
+
+router.get("/", getEventPayments);
 
 /* =========================
    EVENT / CAMPAIGN CHECKOUT
