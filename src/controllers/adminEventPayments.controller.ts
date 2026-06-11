@@ -11,9 +11,10 @@ const result = await db.query(`
   SELECT
     p.id,
     p.event_id,
+    p.campaign_id,
+
     es.event_code AS campaign_code,
     es.title AS campaign_name,
-
     oa.organization_name,
     oa.org_uuid AS organization_uuid,
 
