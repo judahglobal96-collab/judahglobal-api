@@ -11,20 +11,25 @@ const result = await db.query(`
   SELECT
     p.id,
     p.event_id,
+    es.event_code AS campaign_code,
     es.title AS campaign_name,
-    es.payment_amount_cents AS amount,
-    es.payment_currency AS currency,
+
+    oa.organization_name,
+    oa.org_uuid AS organization_uuid,
+
     p.payment_status,
     p.payment_provider,
+    p.amount_cents AS amount,
+    p.currency,
     p.checkout_session_id AS stripe_session_id,
-    COALESCE(p.customer_email, sp.contact_email) AS customer_email,
+    p.customer_email,
     p.created_at
 
   FROM event_payments p
   LEFT JOIN event_submissions es
     ON es.id = p.event_id
-  LEFT JOIN event_sponsors sp
-    ON sp.event_id = es.id
+  LEFT JOIN organization_accounts oa
+    ON oa.org_uuid = es.org_uuid
 
   ORDER BY p.created_at DESC
 `);
