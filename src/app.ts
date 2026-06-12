@@ -5,8 +5,7 @@ import cors from "cors";
 import path from "path";
 import { promisify } from "util";
 import { lookup } from "dns";
-
-const dnsLookup = promisify(lookup);
+import fs from "fs";
 
 import eventPaymentsRoutes from "./modules/eventPayments/eventPayments.routes";
 import { stripeWebhook } from "./modules/payments/webhook.controller";
@@ -28,32 +27,15 @@ import placementPublicRoutes from "./modules/public/placements/placementPublic.r
 import eventEngagementRoutes from "./routes/eventEngagement.routes";
 import accountRoutes from "./modules/account/account.routes";
 import { startUserNotificationCron } from "./jobs/userNotificationCron";
-      startUserNotificationCron();
 import userNotificationRoutes from "./routes/userNotification.routes";
 import promotionSyncRoutes from "./routes/promotionSync.routes";
-//*import campaignMediaRoutes from "./modules/monetization/campaignMedia.routes";*//
 import eventMediaRoutes from "./routes/eventMedia.routes";
 import eventMediaModerationRoutes from "./routes/eventMediaModeration.routes";
 
+const dnsLookup = promisify(lookup);
 const app = express();
 
-// ── Global request logger ────────────────────────────────────────────────────
-// Runs before every other middleware so we can see every inbound request,
-// confirm it reaches the auth routes, and surface any synchronous throw that
-// would otherwise produce a silent 500.
-app.use((req, _res, next) => {
-  console.log(`[REQUEST] ${req.method} ${req.path}`, {
-    body: req.body,
-    contentType: req.headers['content-type'],
-  });
-
-  if (req.path.startsWith('/api/v1/auth')) {
-    console.log(`[AUTH ROUTE HIT] ${req.method} ${req.path}`);
-  }
-
-  next();
-});
-// ────────────────────────────────────────────────────────────────────────────
+startUserNotificationCron();
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -63,15 +45,33 @@ const allowedOrigins = [
   "https://judah-global-frontend-production.up.railway.app",
 ];
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-}));
+app.use((req, _res, next) => {
+  console.log(`[REQUEST] ${req.method} ${req.path}`, {
+    body: req.body,
+    contentType: req.headers["content-type"],
+  });
 
-app.options("*", cors({
-  origin: allowedOrigins,
-  credentials: true
-}));
+  if (req.path.startsWith("/api/v1/auth")) {
+    console.log(`[AUTH ROUTE HIT] ${req.method} ${req.path}`);
+  }
+
+  next();
+});
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
+
+app.options(
+  "*",
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
 app.get("/env-check", (_req, res) => {
   res.json({
@@ -85,15 +85,17 @@ app.get("/env-check", (_req, res) => {
 app.get("/db-health", async (_req, res) => {
   try {
     const dbUrl = process.env.DATABASE_URL;
+
     console.log("=== /db-health ENDPOINT ===");
     console.log("DATABASE_URL exists:", !!dbUrl);
     console.log("DATABASE_URL:", dbUrl);
-    
+
     if (dbUrl) {
       const url = new URL(dbUrl);
       const hostname = url.hostname;
+
       console.log("Hostname from URL:", hostname);
-      
+
       try {
         const result = await dnsLookup(hostname);
         console.log("DNS lookup result:", result);
@@ -101,8 +103,6 @@ app.get("/db-health", async (_req, res) => {
         console.error("DNS lookup failed:", dnsErr.message);
       }
     }
-
-    console.log("DATABASE_URL:", dbUrl); // Add this line
 
     const result = await db.query("SELECT NOW() as now");
 
@@ -114,6 +114,7 @@ app.get("/db-health", async (_req, res) => {
     });
   } catch (error: any) {
     const dbUrl = process.env.DATABASE_URL;
+
     console.error("=== /db-health ERROR ===");
     console.error("DATABASE_URL exists:", !!dbUrl);
     console.error("DATABASE_URL:", dbUrl);
@@ -134,18 +135,9 @@ app.get("/db-health", async (_req, res) => {
   }
 });
 
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://judah-global-frontend-production.up.railway.app",
-    "https://app.judahglobal.org"
-  ],
-  credentials: true,
-}));
-
 /**
- * Stripe webhook FIRST (raw body required)
- * Must be before express.json()
+ * Stripe webhook FIRST.
+ * Must be before express.json().
  */
 app.post(
   "/api/v1/event-payments/webhook",
@@ -159,8 +151,6 @@ app.post(
 
 app.use(express.json());
 
-import fs from "fs";
-
 app.get("/debug/uploads", (_req, res) => {
   const uploadsPath = path.join(process.cwd(), "uploads");
 
@@ -173,9 +163,7 @@ app.get("/debug/uploads", (_req, res) => {
           name: item,
           isDirectory: stat.isDirectory(),
           size: stat.size,
-          files: stat.isDirectory()
-            ? fs.readdirSync(fullPath)
-            : []
+          files: stat.isDirectory() ? fs.readdirSync(fullPath) : [],
         };
       })
     : [];
@@ -191,53 +179,51 @@ app.get("/debug/uploads", (_req, res) => {
 app.get("/", (_req, res) => {
   res.send("Judah Global API running");
 });
-app.get("/api/v1/test-payments", (req, res) => {
+
+app.get("/api/v1/test-payments", (_req, res) => {
   res.json({ success: true });
 });
+
+/**
+ * Public event slug routes.
+ *
+ * Existing route:
+ *   /api/events/:slug
+ *
+ * New clearer route for Judah Global short links:
+ *   /api/v1/public/events/slug/:slug
+ */
+app.get("/api/events/:slug", getPublicEventBySlug);
+app.get("/api/v1/public/events/slug/:slug", getPublicEventBySlug);
+
 app.use("/api/v1/event-payments", eventPaymentsRoutes);
 app.use("/api/v1/event-submissions", eventSubmissionRoutes);
 app.use("/api/v1/events", eventDiscoveryRoutes);
 app.use("/api/v1/discovery", discoveryRoutes);
 
-app.get("/api/events/:slug", getPublicEventBySlug);
-
-const UPLOAD_DIR =
-  process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
-
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 app.use("/uploads", express.static(UPLOAD_DIR));
 
 app.use("/api/v1/admin/media-review", adminMediaReviewRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/admin", adminEventsRoutes);
-
 app.use("/api/v1/org/events", orgEventSubmissionRoutes);
 app.use("/api/v1/org-accounts", orgAccountsRoutes);
 app.use("/api/v1/org", orgRoutes);
-
 app.use("/api/v1/account", accountRoutes);
-
 app.use("/api/v1/payments", paymentsRoutes);
 app.use("/api/v1/campaigns", campaignRoutes);
-
-//*app.use("/api/campaign-media", campaignMediaRoutes);*//
-
 app.use("/api/v1/events", eventMediaRoutes);
 app.use("/api/admin/events/media", eventMediaModerationRoutes);
-
 app.use("/api/v1/placements", placementHoldRoutes);
 app.use("/api/v1/public/placements", placementPublicRoutes);
 app.use("/api/v1/event-engagement", eventEngagementRoutes);
 app.use("/api/v1/user-notifications", userNotificationRoutes);
 app.use("/api/v1/promotion-sync", promotionSyncRoutes);
 
-// ── Global error handler ─────────────────────────────────────────────────────
-// Must be registered AFTER all routes. Express identifies error-handling
-// middleware by its four-argument signature (err, req, res, next).
-// Any unhandled throw — including ones from middleware earlier in the chain —
-// will land here so we can log the full stack and return a clean 500.
 app.use((err: any, req: any, res: any, next: any) => {
-  console.error('[GLOBAL ERROR HANDLER]', {
+  console.error("[GLOBAL ERROR HANDLER]", {
     method: req.method,
     path: req.path,
     message: err?.message,
@@ -251,10 +237,9 @@ app.use((err: any, req: any, res: any, next: any) => {
   }
 
   res.status(500).json({
-    message: 'Internal server error.',
+    message: "Internal server error.",
     error: err?.message,
   });
 });
-// ────────────────────────────────────────────────────────────────────────────
 
 export default app;
