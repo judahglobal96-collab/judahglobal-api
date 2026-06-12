@@ -164,8 +164,8 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
           OR edi.event_slug = $1
         )
         AND (
-          e.expires_at IS NULL
-          OR e.expires_at > NOW()
+          edi.starts_at_utc IS NULL
+          OR edi.start_at_utc > NOW()
         )
 
       LIMIT 1
@@ -255,11 +255,15 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
         submitterEmail: event.submitter_email || null,
       },
     });
-  } catch (error) {
-    console.error("getPublicEventBySlug error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load event",
-    });
-  }
+} catch (error: any) {
+  console.error("getPublicEventBySlug error:", error);
+
+  return res.status(500).json({
+    success: false,
+    message: "Failed to load event",
+    error: error?.message,
+    code: error?.code,
+    detail: error?.detail,
+  });
+}
 }
