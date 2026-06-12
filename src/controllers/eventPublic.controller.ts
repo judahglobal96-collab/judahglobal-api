@@ -161,6 +161,7 @@ export async function getPublicEventBySlug(req: Request, res: Response) {
           e.id::text = $1
           OR e.slug = $1
           OR e.event_code = $1
+          OR edi.event_slug = $1
         )
         AND (
           e.expires_at IS NULL
