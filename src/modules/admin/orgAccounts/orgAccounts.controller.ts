@@ -289,7 +289,10 @@ export async function updateAdminOrganizationAccount(req: Request, res: Response
   }
 }
 
-export async function updateAdminOrganizationAccountStatus(req: Request, res: Response) {
+export async function updateAdminOrganizationAccountStatus(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
     const orgId = getSingleParam(req.params.orgId);
 
@@ -300,7 +303,12 @@ export async function updateAdminOrganizationAccountStatus(req: Request, res: Re
       });
     }
 
-    const { status } = req.body ?? {};
+    const {
+      status,
+      activation_type,
+      billing_type,
+      waiver_reason,
+    } = req.body ?? {};
 
     if (!status || typeof status !== 'string') {
       return res.status(400).json({
@@ -309,7 +317,43 @@ export async function updateAdminOrganizationAccountStatus(req: Request, res: Re
       });
     }
 
-    const updated = await updateOrganizationAccountStatus(orgId, status as any);
+    if (
+      activation_type &&
+      activation_type !== 'paid' &&
+      activation_type !== 'waived'
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'activation_type must be paid or waived',
+      });
+    }
+
+    if (
+      billing_type &&
+      billing_type !== 'paid' &&
+      billing_type !== 'waived'
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'billing_type must be paid or waived',
+      });
+    }
+
+    const finalBillingType = billing_type ?? activation_type ?? null;
+
+    if (status === 'active' && finalBillingType === 'waived' && !waiver_reason?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'waiver_reason is required for waived activation',
+      });
+    }
+
+    const updated = await updateOrganizationAccountStatus(orgId, status as any, {
+      activation_type,
+      billing_type: finalBillingType,
+      waiver_reason: finalBillingType === 'waived' ? waiver_reason.trim() : null,
+      waived_by_admin_id: req.user?.id ?? null,
+    });
 
     if (!updated) {
       return res.status(404).json({
@@ -339,7 +383,6 @@ export async function updateAdminOrganizationAccountStatus(req: Request, res: Re
     });
   }
 }
-
 export async function deleteAdminOrganizationAccount(req: Request, res: Response) {
   try {
     const orgId = getSingleParam(req.params.orgId);

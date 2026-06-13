@@ -124,6 +124,10 @@ const baseSelect = `
     oa.subscription_expires_at,
     oa.created_at,
     oa.updated_at
+    oa.subscription_billing_type,
+    oa.subscription_waiver_reason,
+    oa.subscription_waived_at,
+    oa.subscription_waived_by_admin_id,
   FROM organization_accounts oa
 `;
 
@@ -156,6 +160,10 @@ const returningFields = `
   subscription_payment_intent_id,
   subscription_started_at,
   subscription_expires_at,
+  oa.subscription_billing_type,
+  oa.subscription_waiver_reason,
+  oa.subscription_waived_at,
+  oa.subscription_waived_by_admin_id,
   created_at,
   updated_at
 `;
@@ -390,21 +398,65 @@ export async function updateOrganizationAccount(
 
 export async function updateOrganizationAccountStatus(
   id: string | number,
-  status: OrgAccountStatus
+  status: OrgAccountStatus,
+  options?: {
+    activation_type?: "paid" | "waived";
+    billing_type?: "paid" | "waived";
+    waiver_reason?: string | null;
+    waived_by_admin_id?: string | null;
+  }
 ) {
   if (!allowedStatuses.includes(status)) {
     throw new Error("Invalid organization account status");
   }
 
+  const billingType = options?.billing_type ?? options?.activation_type ?? null;
+  const waiverReason = options?.waiver_reason ?? null;
+  const waivedByAdminId = options?.waived_by_admin_id ?? null;
+
   const sql = `
     UPDATE organization_accounts
-    SET status = $1, updated_at = NOW()
+    SET
+      status = $1,
+      subscription_status = CASE
+        WHEN $1 = 'active' THEN 'active'
+        WHEN $1 = 'suspended' THEN 'suspended'
+        ELSE subscription_status
+      END,
+      subscription_billing_type = CASE
+        WHEN $1 = 'active' AND $3 IS NOT NULL THEN $3
+        ELSE subscription_billing_type
+      END,
+      subscription_started_at = CASE
+        WHEN $1 = 'active' AND subscription_started_at IS NULL THEN NOW()
+        ELSE subscription_started_at
+      END,
+      subscription_waiver_reason = CASE
+        WHEN $1 = 'active' AND $3 = 'waived' THEN $4
+        ELSE subscription_waiver_reason
+      END,
+      subscription_waived_at = CASE
+        WHEN $1 = 'active' AND $3 = 'waived' THEN NOW()
+        ELSE subscription_waived_at
+      END,
+      subscription_waived_by_admin_id = CASE
+        WHEN $1 = 'active' AND $3 = 'waived' THEN $5
+        ELSE subscription_waived_by_admin_id
+      END,
+      updated_at = NOW()
     WHERE id = $2
     RETURNING
-      ${returningFields}
+    ${returningFields}
   `;
 
-  const result = await db.query(sql, [status, id]);
+  const result = await db.query(sql, [
+    status,
+    id,
+    billingType,
+    waiverReason,
+    waivedByAdminId,
+  ]);
+
   return result.rows[0] || null;
 }
 
