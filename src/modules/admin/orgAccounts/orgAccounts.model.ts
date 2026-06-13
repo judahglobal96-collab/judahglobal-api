@@ -414,40 +414,40 @@ export async function updateOrganizationAccountStatus(
   const waiverReason = options?.waiver_reason ?? null;
   const waivedByAdminId = options?.waived_by_admin_id ?? null;
 
-  const sql = `
-    UPDATE organization_accounts
-    SET
-      status = $1,
-      subscription_status = CASE
-        WHEN $1 = 'active' THEN 'active'
-        WHEN $1 = 'suspended' THEN 'suspended'
-        ELSE subscription_status
-      END,
-      subscription_billing_type = CASE
-        WHEN $1 = 'active' AND $3 IS NOT NULL THEN $3
-        ELSE subscription_billing_type
-      END,
-      subscription_started_at = CASE
-        WHEN $1 = 'active' AND subscription_started_at IS NULL THEN NOW()
-        ELSE subscription_started_at
-      END,
-      subscription_waiver_reason = CASE
-        WHEN $1 = 'active' AND $3 = 'waived' THEN $4
-        ELSE subscription_waiver_reason
-      END,
-      subscription_waived_at = CASE
-        WHEN $1 = 'active' AND $3 = 'waived' THEN NOW()
-        ELSE subscription_waived_at
-      END,
-      subscription_waived_by_admin_id = CASE
-        WHEN $1 = 'active' AND $3 = 'waived' THEN $5
-        ELSE subscription_waived_by_admin_id
-      END,
-      updated_at = NOW()
-    WHERE id = $2
-    RETURNING
-    ${returningFields}
-  `;
+const sql = `
+  UPDATE organization_accounts
+  SET
+    status = $1::varchar,
+    subscription_status = CASE
+      WHEN $1::varchar = 'active' THEN 'active'
+      WHEN $1::varchar = 'suspended' THEN 'suspended'
+      ELSE subscription_status
+    END,
+    subscription_billing_type = CASE
+      WHEN $1::varchar = 'active' AND $3::varchar IS NOT NULL THEN $3::varchar
+      ELSE subscription_billing_type
+    END,
+    subscription_started_at = CASE
+      WHEN $1::varchar = 'active' AND subscription_started_at IS NULL THEN NOW()
+      ELSE subscription_started_at
+    END,
+    subscription_waiver_reason = CASE
+      WHEN $1::varchar = 'active' AND $3::varchar = 'waived' THEN $4::text
+      ELSE subscription_waiver_reason
+    END,
+    subscription_waived_at = CASE
+      WHEN $1::varchar = 'active' AND $3::varchar = 'waived' THEN NOW()
+      ELSE subscription_waived_at
+    END,
+    subscription_waived_by_admin_id = CASE
+      WHEN $1::varchar = 'active' AND $3::varchar = 'waived' THEN $5::uuid
+      ELSE subscription_waived_by_admin_id
+    END,
+    updated_at = NOW()
+  WHERE id = $2
+  RETURNING
+  ${returningFields}
+`;
 
   const result = await db.query(sql, [
     status,
