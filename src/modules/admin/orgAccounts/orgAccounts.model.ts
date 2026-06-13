@@ -122,12 +122,12 @@ const baseSelect = `
     oa.subscription_payment_intent_id,
     oa.subscription_started_at,
     oa.subscription_expires_at,
-    oa.created_at,
-    oa.updated_at
     oa.subscription_billing_type,
     oa.subscription_waiver_reason,
     oa.subscription_waived_at,
     oa.subscription_waived_by_admin_id,
+    oa.created_at,
+    oa.updated_at
   FROM organization_accounts oa
 `;
 
@@ -160,10 +160,10 @@ const returningFields = `
   subscription_payment_intent_id,
   subscription_started_at,
   subscription_expires_at,
-  oa.subscription_billing_type,
-  oa.subscription_waiver_reason,
-  oa.subscription_waived_at,
-  oa.subscription_waived_by_admin_id,
+  subscription_billing_type,
+  subscription_waiver_reason,
+  subscription_waived_at,
+  subscription_waived_by_admin_id,
   created_at,
   updated_at
 `;
