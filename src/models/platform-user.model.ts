@@ -314,3 +314,39 @@ export async function countExecSysAdmins() {
 
   return result.rows[0]?.count ?? 0;
 }
+export async function findPlatformUserProfileById(id: string) {
+  const result = await db.query(
+    `
+    SELECT
+      pu.id,
+      pu.first_name,
+      pu.last_name,
+      pu.dob_month,
+      pu.dob_year,
+      pu.city,
+      pu.state_region,
+      pu.email,
+      pu.role,
+      pu.is_active,
+      pu.is_email_verified,
+      pu.last_login_at,
+      pu.created_at,
+      pu.updated_at,
+      oa.id AS organization_id,
+      oa.org_uuid AS organization_uuid,
+      oa.organization_name,
+      CASE
+        WHEN oa.id IS NOT NULL THEN true
+        ELSE false
+      END AS has_org_account
+    FROM platform_users pu
+    LEFT JOIN organization_accounts oa
+      ON oa.owner_user_id = pu.id
+    WHERE pu.id = $1
+    LIMIT 1
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}

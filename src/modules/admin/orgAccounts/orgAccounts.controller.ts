@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../../../middleware/auth.middleware';
+
 import {
   createOrganizationAccount,
   deleteOrganizationAccount,
@@ -14,6 +15,21 @@ import {
 function getSingleParam(value: string | string[] | undefined): string | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] : value;
+}
+
+function getCleanString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function normalizeEmail(value: unknown): string | null {
+  const email = getCleanString(value);
+  return email ? email.toLowerCase() : null;
+}
+
+function isAdminRole(role?: string | null): boolean {
+  return role === 'admin' || role === 'sysadmin' || role === 'execsysadmin';
 }
 
 export async function getAdminOrganizationAccounts(req: Request, res: Response) {
@@ -130,12 +146,7 @@ export async function getOrganizationAccountByUuidForPortal(
 
     const userId = req.user?.id ?? null;
     const userRole = req.user?.role ?? null;
-
-    const isAdmin =
-      userRole === 'admin' ||
-      userRole === 'sysadmin' ||
-      userRole === 'execsysadmin';
-
+    const isAdmin = isAdminRole(userRole);
     const isOwner = !!userId && organization.owner_user_id === userId;
 
     if (!isAdmin && !isOwner) {
@@ -158,7 +169,10 @@ export async function getOrganizationAccountByUuidForPortal(
   }
 }
 
-export async function createAdminOrganizationAccount(req: AuthenticatedRequest, res: Response) {
+export async function createAdminOrganizationAccount(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
     const {
       organization_name,
@@ -177,9 +191,12 @@ export async function createAdminOrganizationAccount(req: AuthenticatedRequest, 
       status,
       verification_status,
       notes,
+      owner_user_id,
     } = req.body ?? {};
 
-    if (!organization_name || typeof organization_name !== 'string' || !organization_name.trim()) {
+    const safeOrganizationName = getCleanString(organization_name);
+
+    if (!safeOrganizationName) {
       return res.status(400).json({
         success: false,
         message: 'organization_name is required',
@@ -187,23 +204,23 @@ export async function createAdminOrganizationAccount(req: AuthenticatedRequest, 
     }
 
     const created = await createOrganizationAccount({
-      organization_name,
-      organization_type,
-      contact_name,
-      contact_email,
-      contact_phone,
-      street_address,
-      city,
-      state_region,
-      country,
-      website_url,
-      instagram_url,
-      logo_url,
-      logo_source,
-      status,
-      verification_status,
-      notes,
-      owner_user_id: req.user?.id ?? null,
+      organization_name: safeOrganizationName,
+      organization_type: getCleanString(organization_type),
+      contact_name: getCleanString(contact_name),
+      contact_email: normalizeEmail(contact_email),
+      contact_phone: getCleanString(contact_phone),
+      street_address: getCleanString(street_address),
+      city: getCleanString(city),
+      state_region: getCleanString(state_region),
+      country: getCleanString(country),
+      website_url: getCleanString(website_url),
+      instagram_url: getCleanString(instagram_url),
+      logo_url: getCleanString(logo_url),
+      logo_source: getCleanString(logo_source),
+      status: getCleanString(status) || 'active',
+      verification_status: getCleanString(verification_status) || 'verified',
+      notes: getCleanString(notes) || 'Created by admin',
+      owner_user_id: getCleanString(owner_user_id) || null,
       created_by_admin: true,
       created_by_admin_id: req.user?.id ?? null,
     });
@@ -342,13 +359,35 @@ export async function deleteAdminOrganizationAccount(req: Request, res: Response
   }
 }
 
-export const publicRegisterOrganization = async (req: AuthenticatedRequest, res: Response) => {
+export const publicRegisterOrganization = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
+    const ownerUserId = req.user?.id ?? null;
+    const ownerEmail = normalizeEmail(req.user?.email);
+
+    if (!ownerUserId || !ownerEmail) {
+      return res.status(401).json({
+        success: false,
+        message: 'Please log in before registering an organization.',
+      });
+    }
+
+    const existingOrganization = await getOrganizationAccountByOwnerUserId(ownerUserId);
+
+    if (existingOrganization) {
+      return res.status(409).json({
+        success: false,
+        message: 'This platform user already has an organization account.',
+        organization: existingOrganization,
+      });
+    }
+
     const {
       organization_name,
       organization_type,
       contact_name,
-      email,
       phone,
       street_address,
       city,
@@ -356,31 +395,38 @@ export const publicRegisterOrganization = async (req: AuthenticatedRequest, res:
       country,
     } = req.body ?? {};
 
-    if (!organization_name || !contact_name || !email || !organization_type) {
+    const safeOrganizationName = getCleanString(organization_name);
+    const safeOrganizationType = getCleanString(organization_type);
+    const safeContactName = getCleanString(contact_name);
+
+    if (!safeOrganizationName || !safeOrganizationType || !safeContactName) {
       return res.status(400).json({
         success: false,
-        message: 'organization_name, organization_type, contact_name, and email are required',
+        message:
+          'organization_name, organization_type, and contact_name are required',
       });
     }
 
     const created = await createOrganizationAccount({
-      organization_name,
-      organization_type,
-      contact_name,
-      contact_email: email,
-      contact_phone: phone ?? null,
-      street_address: street_address ?? null,
-      city: city ?? null,
-      state_region: state_region ?? null,
-      country: country ?? null,
+      organization_name: safeOrganizationName,
+      organization_type: safeOrganizationType,
+      contact_name: safeContactName,
+      contact_email: ownerEmail,
+      contact_phone: getCleanString(phone),
+      street_address: getCleanString(street_address),
+      city: getCleanString(city),
+      state_region: getCleanString(state_region),
+      country: getCleanString(country),
       website_url: null,
       instagram_url: null,
       logo_url: null,
       logo_source: null,
       status: 'pending',
       verification_status: 'unverified',
-      notes: 'Submitted from public registration form',
-      owner_user_id: req.user?.id ?? null,
+      notes: 'Submitted from authenticated organization registration form',
+      owner_user_id: ownerUserId,
+      created_by_admin: false,
+      created_by_admin_id: null,
     });
 
     return res.status(201).json({
