@@ -194,6 +194,20 @@ export async function createAdminOrganizationAccount(
       owner_user_id,
     } = req.body ?? {};
 
+    const safeStatus =
+    getCleanString(status) === 'pending' ||
+    getCleanString(status) === 'active' ||
+    getCleanString(status) === 'suspended' ||
+    getCleanString(status) === 'cancelled'
+      ? getCleanString(status)
+      : 'active';
+
+  const safeVerificationStatus =
+  getCleanString(verification_status) === 'unverified' ||
+  getCleanString(verification_status) === 'verified' ||
+  getCleanString(verification_status) === 'rejected'
+    ? getCleanString(verification_status)
+    : 'verified';
     const safeOrganizationName = getCleanString(organization_name);
 
     if (!safeOrganizationName) {
@@ -217,8 +231,8 @@ export async function createAdminOrganizationAccount(
       instagram_url: getCleanString(instagram_url),
       logo_url: getCleanString(logo_url),
       logo_source: getCleanString(logo_source),
-      status: getCleanString(status) || 'active',
-      verification_status: getCleanString(verification_status) || 'verified',
+      status: safeStatus as any,
+      verification_status: safeVerificationStatus as any, 
       notes: getCleanString(notes) || 'Created by admin',
       owner_user_id: getCleanString(owner_user_id) || null,
       created_by_admin: true,
