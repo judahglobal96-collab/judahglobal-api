@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import {
   createPlatformUser,
   findPlatformUserByEmail,
-  findPlatformUserById,
+  findPlatformUserProfileById,
   setTwoFactorCode,
   clearTwoFactorCode,
   verifyPlatformUserEmail,
@@ -404,7 +404,7 @@ export async function getMyPlatformProfile(req: Request, res: Response) {
       });
     }
 
-    const user = await findPlatformUserById(authUser.id);
+    const user = await findPlatformUserProfileById(authUser.id);
 
     if (!user) {
       return res.status(404).json({
@@ -426,6 +426,13 @@ export async function getMyPlatformProfile(req: Request, res: Response) {
         isEmailVerified: user.is_email_verified,
         lastLoginAt: user.last_login_at,
         createdAt: user.created_at,
+
+        hasOrgAccount: user.has_org_account,
+        organizationId: user.organization_id,
+        organizationUuid: user.organization_uuid,
+        organizationName: user.organization_name,
+        organizationStatus: user.organization_status,
+        subscriptionStatus: user.subscription_status,
       },
     });
   } catch (error) {
