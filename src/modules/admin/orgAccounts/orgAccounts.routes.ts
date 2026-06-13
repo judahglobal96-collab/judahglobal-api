@@ -25,7 +25,11 @@ const router = Router();
  */
 
 // Register organization (user must be logged in)
-router.post('/public-register', publicRegisterOrganization);
+    router.post(
+      "/public-register",
+      requireAuth,
+      publicRegisterOrganization
+    );
 
 // Get current user's organization
 router.get('/me', requireAuth, getMyOrganizationAccount);
