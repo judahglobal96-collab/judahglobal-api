@@ -335,6 +335,8 @@ export async function findPlatformUserProfileById(id: string) {
       oa.id AS organization_id,
       oa.org_uuid AS organization_uuid,
       oa.organization_name,
+      oa.status AS organization_status,
+      oa.subscription_status,
       CASE
         WHEN oa.id IS NOT NULL THEN true
         ELSE false
