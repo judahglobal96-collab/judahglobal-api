@@ -1150,15 +1150,20 @@ export async function applyCampaignWaiver(input: {
   try {
     await client.query("BEGIN");
 
-    const campaignResult = await client.query(
-      `
-      SELECT id, status, org_uuid, source
-      FROM ad_campaigns
-      WHERE id = $1
-      FOR UPDATE
-      `,
-      [input.campaignId]
-    );
+  const campaignResult = await client.query(
+    `
+    SELECT
+      id,
+      status,
+      org_uuid,
+      source,
+      linked_event_id
+    FROM ad_campaigns
+    WHERE id = $1
+    FOR UPDATE
+    `,
+    [input.campaignId]
+  );
 
     if (!campaignResult.rows.length) {
       throw new Error("Campaign not found.");
@@ -1199,6 +1204,22 @@ export async function applyCampaignWaiver(input: {
       [input.campaignId]
     );
 
+    const linkedEventId = campaign.rows?.[0]?.linked_event_id || null;
+
+    if (linkedEventId) {
+      await client.query(
+        `
+        UPDATE event_submissions
+        SET
+          status = 'pending',
+          payment_status = 'waived',
+          payment_updated_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [linkedEventId]
+      );
+}
     await client.query("COMMIT");
 
     return {
