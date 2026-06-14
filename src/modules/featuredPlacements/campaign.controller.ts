@@ -382,7 +382,13 @@ export async function applyCampaignWaiverController(
       return res.status(400).json({ message: "waiverReason is required." });
     }
 
-    if (user?.role !== "admin" && user?.role !== "super_admin") {
+    const allowedAdminRoles = [
+      "admin",
+      "sysadmin",
+      "execsysadmin",
+    ];
+
+    if (!allowedAdminRoles.includes(user?.role)) {
       return res.status(403).json({
         message: "Only admins can apply campaign waivers.",
       });
