@@ -8,6 +8,7 @@ import {
   uploadCampaignPromoMedia,
   getCampaignPromoMediaStatus,
   getCampaignPaymentSuccessBySessionId,
+  applyCampaignWaiver,
 } from "./campaign.service";
 
 import { createPendingCampaignMedia } from "../monetization/campaignMedia.service";
@@ -355,6 +356,53 @@ export async function createCampaignCheckoutSessionController(
         "Unable to create campaign checkout session."
       ),
     });
+  }
+}
+
+export async function applyCampaignWaiverController(
+  req: Request,
+  res: Response
+) {
+  try {
+    const { campaignId, waiverType, waiverReason } = req.body;
+    const user = (req as any)?.user;
+
+    if (!campaignId || !String(campaignId).trim()) {
+      return res.status(400).json({ message: "campaignId is required." });
+    }
+
+    if (
+      waiverType !== "founder_onboarding" &&
+      waiverType !== "strategic_partner"
+    ) {
+      return res.status(400).json({ message: "waiverType is invalid." });
+    }
+
+    if (!waiverReason || !String(waiverReason).trim()) {
+      return res.status(400).json({ message: "waiverReason is required." });
+    }
+
+    if (user?.role !== "admin" && user?.role !== "super_admin") {
+      return res.status(403).json({
+        message: "Only admins can apply campaign waivers.",
+      });
+    }
+
+    const result = await applyCampaignWaiver({
+      campaignId: String(campaignId).trim(),
+      waiverType,
+      waiverReason: String(waiverReason).trim(),
+      appliedByUserId: user?.id || null,
+    });
+
+    return res.status(200).json({
+      message: "Campaign waiver applied successfully.",
+      ...result,
+    });
+  } catch (error) {
+    console.error("applyCampaignWaiverController error:", error);
+    const message = getErrorMessage(error, "Unable to apply campaign waiver.");
+    return res.status(getValidationStatusCode(message)).json({ message });
   }
 }
 

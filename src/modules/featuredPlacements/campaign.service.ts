@@ -1139,6 +1139,82 @@ export async function createCampaignCheckoutSession(campaignId: string) {
   }
 }
 
+export async function applyCampaignWaiver(input: {
+  campaignId: string;
+  waiverType: "founder_onboarding" | "strategic_partner";
+  waiverReason: string;
+  appliedByUserId: string | null;
+}) {
+  const client = await db.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const campaignResult = await client.query(
+      `
+      SELECT id, status, org_uuid, source
+      FROM ad_campaigns
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [input.campaignId]
+    );
+
+    if (!campaignResult.rows.length) {
+      throw new Error("Campaign not found.");
+    }
+
+    const campaign = campaignResult.rows[0];
+
+    if (!campaign.org_uuid && campaign.source !== "org-submit-event-monetization") {
+      throw new Error("Promo waivers are only available for organization campaigns.");
+    }
+
+    if (
+      input.waiverType !== "founder_onboarding" &&
+      input.waiverType !== "strategic_partner"
+    ) {
+      throw new Error("Invalid waiver type.");
+    }
+
+    if (!input.waiverReason.trim()) {
+      throw new Error("Waiver reason is required.");
+    }
+
+    await client.query(
+      `
+      UPDATE ad_campaigns
+      SET status = 'paid'
+      WHERE id = $1
+      `,
+      [input.campaignId]
+    );
+
+    await client.query(
+      `
+      UPDATE ad_campaign_items
+      SET status = 'paid'
+      WHERE campaign_id = $1
+      `,
+      [input.campaignId]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      campaignId: input.campaignId,
+      payment_status: "waived",
+      payment_source: "admin_waiver",
+      waiver_type: input.waiverType,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function uploadCampaignPromoMedia(
   input: UploadCampaignPromoMediaInput
 ) {

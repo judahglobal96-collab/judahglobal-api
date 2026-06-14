@@ -11,6 +11,7 @@ import {
   uploadCampaignPromoMediaController,
   getCampaignPromoMediaStatusController,
   getCampaignPaymentSuccessController,
+  applyCampaignWaiverController,
 } from "./campaign.controller";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { uploadEventMedia } from "../../controllers/eventSubmission.controller";
@@ -99,6 +100,12 @@ router.post(
   "/create-checkout-session",
   requireAuth,
   createCampaignCheckoutSessionController
+);
+
+router.post(
+  "/apply-waiver",
+  requireAuth,
+  applyCampaignWaiverController
 );
 
 /**
