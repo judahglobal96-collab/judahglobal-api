@@ -1204,7 +1204,7 @@ export async function applyCampaignWaiver(input: {
       [input.campaignId]
     );
 
-    const linkedEventId = campaign.rows?.[0]?.linked_event_id || null;
+    const linkedEventId = campaign.linked_event_id || null;
 
     if (linkedEventId) {
       await client.query(
