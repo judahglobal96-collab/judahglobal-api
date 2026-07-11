@@ -14,8 +14,6 @@ export function requireAuth(
   next: NextFunction
 ) {
   try {
-      console.log("requireAuth headers.authorization:", req.headers.authorization);
-      console.log("requireAuth cookies:", req.cookies);
 
     const authHeader = req.headers.authorization;
 
@@ -34,8 +32,6 @@ export function requireAuth(
         message: 'Unauthorized. Missing token.',
       });
     }
-    console.log("VERIFY SECRET:", process.env.JWT_SECRET);
-    console.log("TOKEN:", token);
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET as string
@@ -44,7 +40,6 @@ export function requireAuth(
       email: string;
       role: 'user' | 'admin' | 'sysadmin' | 'execsysadmin';
     };
-    console.log("DECODED:", decoded);
     req.user = {
       id: decoded.sub,
       email: decoded.email,
