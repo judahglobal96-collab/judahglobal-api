@@ -8,6 +8,7 @@ import {
   getMe,
   getMyPlatformProfile,
   updateMyPlatformProfile,
+  resendPlatformUserOtp,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 
@@ -16,6 +17,7 @@ const router = Router();
 router.post('/register', registerPlatformUser);
 router.post('/login', loginPlatformUser);
 router.post('/verify-otp', verifyPlatformUserOtp);
+router.post('/resend-otp', resendPlatformUserOtp);
 
 router.post('/forgot-password', forgotPlatformPassword);
 router.post('/reset-password', resetPlatformPassword);

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+
 import {
   createPlatformUser,
   findPlatformUserByEmail,
@@ -15,21 +16,34 @@ import {
   updatePlatformUserPassword,
   clearPasswordResetToken,
 } from '../models/platform-user.model';
-import { sendOtpEmail } from "../services/otp.service";
 
-function generateOtpCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+import { sendOtpEmail } from '../services/otp.service';
+import { sendPasswordResetEmail } from '../services/password-reset.service';
+
+const OTP_EXPIRY_MINUTES = 10;
+const PASSWORD_RESET_EXPIRY_MINUTES = 60;
+
+function normalizeEmail(email: unknown): string {
+  return String(email ?? '').trim().toLowerCase();
 }
 
-function getOtpExpiry(minutes = 10): string {
+function generateOtpCode(): string {
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+function getOtpExpiry(minutes = OTP_EXPIRY_MINUTES): string {
   const expires = new Date();
   expires.setMinutes(expires.getMinutes() + minutes);
+
   return expires.toISOString();
 }
 
-function getPasswordResetExpiry(minutes = 60): string {
+function getPasswordResetExpiry(
+  minutes = PASSWORD_RESET_EXPIRY_MINUTES
+): string {
   const expires = new Date();
   expires.setMinutes(expires.getMinutes() + minutes);
+
   return expires.toISOString();
 }
 
@@ -37,7 +51,11 @@ function hashResetToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function signJwt(user: { id: string; email: string; role: string }) {
+function signJwt(user: {
+  id: string;
+  email: string;
+  role: string;
+}): string {
   const secret = process.env.JWT_SECRET;
 
   if (!secret) {
@@ -57,7 +75,15 @@ function signJwt(user: { id: string; email: string; role: string }) {
   );
 }
 
-export async function registerPlatformUser(req: Request, res: Response) {
+/**
+ * Register a new Judah Global platform user.
+ *
+ * POST /auth/register
+ */
+export async function registerPlatformUser(
+  req: Request,
+  res: Response
+) {
   try {
     const {
       firstName,
@@ -66,13 +92,50 @@ export async function registerPlatformUser(req: Request, res: Response) {
       dobYear,
       city,
       stateRegion,
-      email,
       password,
     } = req.body;
 
-    if (!firstName || !lastName || !dobMonth || !dobYear || !email || !password) {
+    const email = normalizeEmail(req.body?.email);
+
+    if (
+      !firstName ||
+      !lastName ||
+      !dobMonth ||
+      !dobYear ||
+      !email ||
+      !password
+    ) {
       return res.status(400).json({
         message: 'Missing required fields.',
+      });
+    }
+
+    const numericDobMonth = Number(dobMonth);
+    const numericDobYear = Number(dobYear);
+
+    if (
+      !Number.isInteger(numericDobMonth) ||
+      numericDobMonth < 1 ||
+      numericDobMonth > 12
+    ) {
+      return res.status(400).json({
+        message: 'Birth month must be between 1 and 12.',
+      });
+    }
+
+    if (
+      !Number.isInteger(numericDobYear) ||
+      numericDobYear < 1900 ||
+      numericDobYear > new Date().getFullYear()
+    ) {
+      return res.status(400).json({
+        message: 'Please provide a valid birth year.',
+      });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters.',
       });
     }
 
@@ -84,53 +147,74 @@ export async function registerPlatformUser(req: Request, res: Response) {
       });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(String(password), 12);
 
     const newUser = await createPlatformUser({
-      firstName,
-      lastName,
-      dobMonth: Number(dobMonth),
-      dobYear: Number(dobYear),
-      city,
-      stateRegion,
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
+      dobMonth: numericDobMonth,
+      dobYear: numericDobYear,
+      city: city ? String(city).trim() : '',
+      stateRegion: stateRegion ? String(stateRegion).trim() : '',
       email,
       passwordHash,
       role: 'user',
     });
 
     const otpCode = generateOtpCode();
-    const expiresAt = getOtpExpiry(10);
+    const expiresAt = getOtpExpiry();
 
     await setTwoFactorCode(newUser.id, otpCode, expiresAt);
 
     try {
       await sendOtpEmail(newUser.email, otpCode);
-    } catch (emailError) 
-  {
-  console.error("[PLATFORM REGISTER OTP EMAIL ERROR]", emailError);
-}
-    console.log('[PLATFORM REGISTER OTP]', {
-      email: newUser.email,
-      otpCode,
-      expiresAt,
-    });
+    } catch (emailError) {
+      console.error(
+        '[PLATFORM REGISTER OTP EMAIL ERROR]',
+        emailError
+      );
+
+      await clearTwoFactorCode(newUser.id);
+
+      return res.status(500).json({
+        message:
+          'Registration was created, but the verification email could not be sent. Please request a new verification code.',
+        requiresOtp: true,
+        email: newUser.email,
+      });
+    }
 
     return res.status(201).json({
       message: 'Registration successful. OTP verification required.',
       requiresOtp: true,
       email: newUser.email,
+      expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
     });
   } catch (error) {
     console.error('registerPlatformUser error:', error);
+
     return res.status(500).json({
       message: 'Registration failed.',
     });
   }
 }
 
-export async function loginPlatformUser(req: Request, res: Response) {
+/**
+ * Authenticate a Judah Global platform user with email and password.
+ *
+ * A valid password generates a new OTP. Any previously stored OTP is
+ * overwritten and therefore becomes invalid.
+ *
+ * POST /auth/login
+ */
+export async function loginPlatformUser(
+  req: Request,
+  res: Response
+) {
+  const email = normalizeEmail(req.body?.email);
+
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -138,20 +222,18 @@ export async function loginPlatformUser(req: Request, res: Response) {
       });
     }
 
-    console.log('[PLATFORM LOGIN] Attempting login for email:', email);
-
     let user;
 
     try {
       user = await findPlatformUserByEmail(email);
-      console.log('[PLATFORM LOGIN] DB query completed. User found:', !!user);
     } catch (dbError) {
-      const err = dbError as Error;
-      console.error('[PLATFORM LOGIN] DB query failed:', {
-        message: err.message,
-        stack: err.stack,
-        email,
+      const error = dbError as Error;
+
+      console.error('[PLATFORM LOGIN DATABASE ERROR]', {
+        message: error.message,
+        stack: error.stack,
       });
+
       throw dbError;
     }
 
@@ -161,7 +243,10 @@ export async function loginPlatformUser(req: Request, res: Response) {
       });
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.password_hash);
+    const passwordMatches = await bcrypt.compare(
+      String(password),
+      user.password_hash
+    );
 
     if (!passwordMatches) {
       return res.status(401).json({
@@ -169,35 +254,47 @@ export async function loginPlatformUser(req: Request, res: Response) {
       });
     }
 
+    if (user.is_active === false) {
+      return res.status(403).json({
+        message:
+          'This account is currently inactive. Please contact Judah Global support.',
+      });
+    }
+
     const otpCode = generateOtpCode();
-    const expiresAt = getOtpExpiry(10);
+    const expiresAt = getOtpExpiry();
 
     await setTwoFactorCode(user.id, otpCode, expiresAt);
 
     try {
-  await sendOtpEmail(user.email, otpCode);
-} catch (emailError) {
-  console.error("[PLATFORM LOGIN OTP EMAIL ERROR]", emailError);
-}
-    console.log('[PLATFORM LOGIN OTP]', {
-      email: user.email,
-      otpCode,
-      expiresAt,
-    });
+      await sendOtpEmail(user.email, otpCode);
+    } catch (emailError) {
+      console.error(
+        '[PLATFORM LOGIN OTP EMAIL ERROR]',
+        emailError
+      );
+
+      await clearTwoFactorCode(user.id);
+
+      return res.status(500).json({
+        message:
+          'Your verification code could not be sent. Please try again.',
+      });
+    }
 
     return res.status(200).json({
       message: 'OTP verification required.',
       requiresOtp: true,
       email: user.email,
+      expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
     });
   } catch (error) {
-    const err = error as Error;
+    const loginError = error as Error;
 
-    console.error('[PLATFORM LOGIN] loginPlatformUser error:', {
-      message: err.message,
-      stack: err.stack,
-      name: err.name,
-      email: req.body?.email,
+    console.error('[PLATFORM LOGIN ERROR]', {
+      message: loginError.message,
+      stack: loginError.stack,
+      name: loginError.name,
     });
 
     return res.status(500).json({
@@ -206,9 +303,89 @@ export async function loginPlatformUser(req: Request, res: Response) {
   }
 }
 
-export async function verifyPlatformUserOtp(req: Request, res: Response) {
+/**
+ * Resend an OTP for a pending registration or login.
+ *
+ * The response is intentionally generic so the endpoint does not reveal
+ * whether an email address belongs to a Judah Global account.
+ *
+ * POST /auth/resend-otp
+ */
+export async function resendPlatformUserOtp(
+  req: Request,
+  res: Response
+) {
   try {
-    const { email, otpCode } = req.body;
+    const email = normalizeEmail(req.body?.email);
+
+    if (!email) {
+      return res.status(400).json({
+        message: 'Email is required.',
+      });
+    }
+
+    const genericMessage =
+      'If an eligible account exists, a new verification code has been sent.';
+
+    const user = await findPlatformUserByEmail(email);
+
+    if (!user || user.is_active === false) {
+      return res.status(200).json({
+        message: genericMessage,
+        expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
+      });
+    }
+
+    const otpCode = generateOtpCode();
+    const expiresAt = getOtpExpiry();
+
+    /*
+     * setTwoFactorCode must update the existing stored OTP and expiration.
+     * This makes every previously issued OTP invalid.
+     */
+    await setTwoFactorCode(user.id, otpCode, expiresAt);
+
+    try {
+      await sendOtpEmail(user.email, otpCode);
+    } catch (emailError) {
+      console.error(
+        '[PLATFORM RESEND OTP EMAIL ERROR]',
+        emailError
+      );
+
+      await clearTwoFactorCode(user.id);
+
+      return res.status(500).json({
+        message:
+          'The verification code could not be sent. Please try again.',
+      });
+    }
+
+    return res.status(200).json({
+      message: genericMessage,
+      expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
+    });
+  } catch (error) {
+    console.error('resendPlatformUserOtp error:', error);
+
+    return res.status(500).json({
+      message: 'Unable to resend the verification code.',
+    });
+  }
+}
+
+/**
+ * Verify the OTP sent during registration, login, or resend.
+ *
+ * POST /auth/verify-otp
+ */
+export async function verifyPlatformUserOtp(
+  req: Request,
+  res: Response
+) {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const otpCode = String(req.body?.otpCode ?? '').trim();
 
     if (!email || !otpCode) {
       return res.status(400).json({
@@ -216,32 +393,64 @@ export async function verifyPlatformUserOtp(req: Request, res: Response) {
       });
     }
 
-    const user = await findPlatformUserByEmail(email);
-
-    if (!user) {
-      return res.status(404).json({
-        message: 'User not found.',
+    if (!/^\d{6}$/.test(otpCode)) {
+      return res.status(400).json({
+        message: 'OTP code must contain exactly 6 digits.',
       });
     }
 
-    if (!user.two_factor_code || !user.two_factor_expires_at) {
+    const user = await findPlatformUserByEmail(email);
+
+    if (!user) {
+      return res.status(401).json({
+        message: 'Invalid or expired OTP code.',
+      });
+    }
+
+    if (user.is_active === false) {
+      return res.status(403).json({
+        message:
+          'This account is currently inactive. Please contact Judah Global support.',
+      });
+    }
+
+    if (
+      !user.two_factor_code ||
+      !user.two_factor_expires_at
+    ) {
       return res.status(400).json({
-        message: 'No OTP is pending for this account.',
+        message:
+          'No verification code is pending. Please request a new code.',
       });
     }
 
     const now = new Date();
     const expiresAt = new Date(user.two_factor_expires_at);
 
-    if (now > expiresAt) {
+    if (
+      Number.isNaN(expiresAt.getTime()) ||
+      now.getTime() > expiresAt.getTime()
+    ) {
+      await clearTwoFactorCode(user.id);
+
       return res.status(400).json({
-        message: 'OTP code has expired.',
+        message:
+          'The verification code has expired. Please request a new code.',
       });
     }
 
-    if (user.two_factor_code !== otpCode) {
+    const storedOtp = String(user.two_factor_code).trim();
+
+    const submittedBuffer = Buffer.from(otpCode);
+    const storedBuffer = Buffer.from(storedOtp);
+
+    const otpMatches =
+      submittedBuffer.length === storedBuffer.length &&
+      crypto.timingSafeEqual(submittedBuffer, storedBuffer);
+
+    if (!otpMatches) {
       return res.status(401).json({
-        message: 'Invalid OTP code.',
+        message: 'Invalid or expired OTP code.',
       });
     }
 
@@ -271,15 +480,27 @@ export async function verifyPlatformUserOtp(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('verifyPlatformUserOtp error:', error);
+
     return res.status(500).json({
       message: 'OTP verification failed.',
     });
   }
 }
 
-export async function forgotPlatformPassword(req: Request, res: Response) {
+/**
+ * Request a password-reset email.
+ *
+ * Repeated requests generate a new token and overwrite the previous
+ * password-reset token, invalidating every earlier reset link.
+ *
+ * POST /auth/forgot-password
+ */
+export async function forgotPlatformPassword(
+  req: Request,
+  res: Response
+) {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body?.email);
 
     if (!email) {
       return res.status(400).json({
@@ -292,7 +513,7 @@ export async function forgotPlatformPassword(req: Request, res: Response) {
 
     const user = await findPlatformUserByEmail(email);
 
-    if (!user) {
+    if (!user || user.is_active === false) {
       return res.status(200).json({
         message: genericMessage,
       });
@@ -300,37 +521,63 @@ export async function forgotPlatformPassword(req: Request, res: Response) {
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenHash = hashResetToken(resetToken);
-    const expiresAt = getPasswordResetExpiry(60);
+    const expiresAt = getPasswordResetExpiry();
 
-    await setPasswordResetToken(user.id, resetTokenHash, expiresAt);
+    await setPasswordResetToken(
+      user.id,
+      resetTokenHash,
+      expiresAt
+    );
 
-    const appBaseUrl =
+    const appBaseUrl = (
       process.env.APP_BASE_URL ||
       process.env.FRONTEND_BASE_URL ||
-      'https://app.judahglobal.org';
+      'https://app.judahglobal.org'
+    ).replace(/\/+$/, '');
 
-    const resetUrl = `${appBaseUrl}/reset-password?token=${resetToken}`;
+    const resetUrl =
+      `${appBaseUrl}/reset-password` +
+      `?token=${encodeURIComponent(resetToken)}`;
 
-    console.log('[PLATFORM PASSWORD RESET LINK]', {
-      email: user.email,
-      resetUrl,
-      expiresAt,
-    });
+    try {
+      await sendPasswordResetEmail(user.email, resetUrl);
+    } catch (emailError) {
+      /*
+       * Do not return a different response for existing and nonexistent
+       * accounts. A different response could expose registered emails.
+       */
+      console.error(
+        '[PLATFORM PASSWORD RESET EMAIL ERROR]',
+        emailError
+      );
+
+      await clearPasswordResetToken(user.id);
+    }
 
     return res.status(200).json({
       message: genericMessage,
     });
   } catch (error) {
     console.error('forgotPlatformPassword error:', error);
+
     return res.status(500).json({
       message: 'Password reset request failed.',
     });
   }
 }
 
-export async function resetPlatformPassword(req: Request, res: Response) {
+/**
+ * Complete a password reset using a valid reset token.
+ *
+ * POST /auth/reset-password
+ */
+export async function resetPlatformPassword(
+  req: Request,
+  res: Response
+) {
   try {
-    const { token, password } = req.body;
+    const token = String(req.body?.token ?? '').trim();
+    const password = String(req.body?.password ?? '');
 
     if (!token || !password) {
       return res.status(400).json({
@@ -338,14 +585,16 @@ export async function resetPlatformPassword(req: Request, res: Response) {
       });
     }
 
-    if (String(password).length < 8) {
+    if (password.length < 8) {
       return res.status(400).json({
         message: 'Password must be at least 8 characters.',
       });
     }
 
     const tokenHash = hashResetToken(token);
-    const user = await findPlatformUserByPasswordResetTokenHash(tokenHash);
+
+    const user =
+      await findPlatformUserByPasswordResetTokenHash(tokenHash);
 
     if (!user || !user.password_reset_expires_at) {
       return res.status(400).json({
@@ -354,9 +603,14 @@ export async function resetPlatformPassword(req: Request, res: Response) {
     }
 
     const now = new Date();
-    const expiresAt = new Date(user.password_reset_expires_at);
+    const expiresAt = new Date(
+      user.password_reset_expires_at
+    );
 
-    if (now > expiresAt) {
+    if (
+      Number.isNaN(expiresAt.getTime()) ||
+      now.getTime() > expiresAt.getTime()
+    ) {
       await clearPasswordResetToken(user.id);
 
       return res.status(400).json({
@@ -366,23 +620,41 @@ export async function resetPlatformPassword(req: Request, res: Response) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    await updatePlatformUserPassword(user.id, passwordHash);
+    await updatePlatformUserPassword(
+      user.id,
+      passwordHash
+    );
+
+    /*
+     * The reset token is single use. Clearing the OTP also prevents a code
+     * issued before the password change from being used afterward.
+     */
     await clearPasswordResetToken(user.id);
     await clearTwoFactorCode(user.id);
 
     return res.status(200).json({
       success: true,
-      message: 'Password updated successfully.',
+      message:
+        'Password updated successfully. Please sign in with your new password.',
     });
   } catch (error) {
     console.error('resetPlatformPassword error:', error);
+
     return res.status(500).json({
       message: 'Password reset failed.',
     });
   }
 }
 
-export async function getMe(req: Request, res: Response) {
+/**
+ * Return the authenticated platform user's core authorization data.
+ *
+ * GET /auth/me
+ */
+export async function getMe(
+  req: Request,
+  res: Response
+) {
   try {
     const authUser = (req as any).user;
 
@@ -400,13 +672,22 @@ export async function getMe(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('getMe error:', error);
+
     return res.status(500).json({
       message: 'Failed to fetch auth user.',
     });
   }
 }
 
-export async function getMyPlatformProfile(req: Request, res: Response) {
+/**
+ * Return the authenticated user's complete Judah Global profile.
+ *
+ * GET /auth/profile
+ */
+export async function getMyPlatformProfile(
+  req: Request,
+  res: Response
+) {
   try {
     const authUser = (req as any).user;
 
@@ -416,7 +697,8 @@ export async function getMyPlatformProfile(req: Request, res: Response) {
       });
     }
 
-    const user = await findPlatformUserProfileById(authUser.id);
+    const user =
+      await findPlatformUserProfileById(authUser.id);
 
     if (!user) {
       return res.status(404).json({
@@ -438,7 +720,6 @@ export async function getMyPlatformProfile(req: Request, res: Response) {
         isEmailVerified: user.is_email_verified,
         lastLoginAt: user.last_login_at,
         createdAt: user.created_at,
-
         hasOrgAccount: user.has_org_account,
         organizationId: user.organization_id,
         organizationUuid: user.organization_uuid,
@@ -449,13 +730,22 @@ export async function getMyPlatformProfile(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('getMyPlatformProfile error:', error);
+
     return res.status(500).json({
       message: 'Failed to load profile.',
     });
   }
 }
 
-export async function updateMyPlatformProfile(req: Request, res: Response) {
+/**
+ * Update the authenticated user's Judah Global platform profile.
+ *
+ * PATCH /auth/profile
+ */
+export async function updateMyPlatformProfile(
+  req: Request,
+  res: Response
+) {
   try {
     const authUser = (req as any).user;
 
@@ -474,20 +764,54 @@ export async function updateMyPlatformProfile(req: Request, res: Response) {
       stateRegion,
     } = req.body;
 
-    if (!firstName || !lastName || !dobMonth || !dobYear) {
+    if (
+      !firstName ||
+      !lastName ||
+      !dobMonth ||
+      !dobYear
+    ) {
       return res.status(400).json({
-        message: 'First name, last name, birth month, and birth year are required.',
+        message:
+          'First name, last name, birth month, and birth year are required.',
       });
     }
 
-    const updatedUser = await updatePlatformUserProfile(authUser.id, {
-      firstName: String(firstName).trim(),
-      lastName: String(lastName).trim(),
-      dobMonth: Number(dobMonth),
-      dobYear: Number(dobYear),
-      city: city ? String(city).trim() : '',
-      stateRegion: stateRegion ? String(stateRegion).trim() : '',
-    });
+    const numericDobMonth = Number(dobMonth);
+    const numericDobYear = Number(dobYear);
+
+    if (
+      !Number.isInteger(numericDobMonth) ||
+      numericDobMonth < 1 ||
+      numericDobMonth > 12
+    ) {
+      return res.status(400).json({
+        message: 'Birth month must be between 1 and 12.',
+      });
+    }
+
+    if (
+      !Number.isInteger(numericDobYear) ||
+      numericDobYear < 1900 ||
+      numericDobYear > new Date().getFullYear()
+    ) {
+      return res.status(400).json({
+        message: 'Please provide a valid birth year.',
+      });
+    }
+
+    const updatedUser = await updatePlatformUserProfile(
+      authUser.id,
+      {
+        firstName: String(firstName).trim(),
+        lastName: String(lastName).trim(),
+        dobMonth: numericDobMonth,
+        dobYear: numericDobYear,
+        city: city ? String(city).trim() : '',
+        stateRegion: stateRegion
+          ? String(stateRegion).trim()
+          : '',
+      }
+    );
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -514,6 +838,7 @@ export async function updateMyPlatformProfile(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('updateMyPlatformProfile error:', error);
+
     return res.status(500).json({
       message: 'Failed to update profile.',
     });
