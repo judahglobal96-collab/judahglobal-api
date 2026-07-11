@@ -15,6 +15,7 @@ import {
   updatePlatformUserPassword,
   clearPasswordResetToken,
 } from '../models/platform-user.model';
+import { sendOtpEmail } from "../services/otp.service";
 
 function generateOtpCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -102,6 +103,12 @@ export async function registerPlatformUser(req: Request, res: Response) {
 
     await setTwoFactorCode(newUser.id, otpCode, expiresAt);
 
+    try {
+      await sendOtpEmail(newUser.email, otpCode);
+    } catch (emailError) 
+  {
+  console.error("[PLATFORM REGISTER OTP EMAIL ERROR]", emailError);
+}
     console.log('[PLATFORM REGISTER OTP]', {
       email: newUser.email,
       otpCode,
@@ -167,6 +174,11 @@ export async function loginPlatformUser(req: Request, res: Response) {
 
     await setTwoFactorCode(user.id, otpCode, expiresAt);
 
+    try {
+  await sendOtpEmail(user.email, otpCode);
+} catch (emailError) {
+  console.error("[PLATFORM LOGIN OTP EMAIL ERROR]", emailError);
+}
     console.log('[PLATFORM LOGIN OTP]', {
       email: user.email,
       otpCode,
