@@ -164,6 +164,11 @@ export async function registerPlatformUser(
     const otpCode = generateOtpCode();
     const expiresAt = getOtpExpiry();
 
+    console.log('[PLATFORM REGISTER OTP]', {
+      email: newUser.email,
+      otpCode,
+      expiresAt, 
+    });
     await setTwoFactorCode(newUser.id, otpCode, expiresAt);
 
     try {
