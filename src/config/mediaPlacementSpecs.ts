@@ -126,6 +126,27 @@ major_events: {
   },
 },
 
+    event_promo: {
+      primary: {
+        placementType: "event_promo",
+        mediaSlot: "primary",
+        label: "Event Promotional Image",
+        category: "Event Promotion",
+        location: "Promotional media used for event marketing and social sharing.",
+        recommendedWidth: 1200,
+        recommendedHeight: 675,
+        minWidth: 1000,
+        minHeight: 560,
+        aspectRatio: "vertical_story",
+        allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+        maxFileSizeMB: 10,
+        requiresMedia: false,
+        mockupShape: "flyer",
+        bestFor: "TikTok, Instagram Reels, Stories, and vertical event promotions.",
+        note: "Use a 9:16 vertical image with important text inside the safe area.",
+      },
+    },
+
 official_flyer: {
   primary: {
     placementType: "official_flyer",
