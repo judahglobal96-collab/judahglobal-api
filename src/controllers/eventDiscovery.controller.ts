@@ -162,11 +162,19 @@ function buildDiscoveryFilters(req: Request, useDefaultCountry = true) {
     paramIndex += 1;
   }
 
-  if (country) {
-    whereParts.push(`e.country ILIKE $${paramIndex}`);
-    params.push(`%${country}%`);
-    paramIndex += 1;
-  }
+    if (country) {
+      const normalizedCountry = country.toLowerCase();
+
+      if (normalizedCountry === "africa") {
+        whereParts.push(`e.timezone ILIKE $${paramIndex}`);
+        params.push("Africa/%");
+        paramIndex += 1;
+      } else {
+        whereParts.push(`e.country ILIKE $${paramIndex}`);
+        params.push(`%${country}%`);
+        paramIndex += 1;
+      }
+    }
 
   if (category) {
     whereParts.push(`e.category_key ILIKE $${paramIndex}`);
